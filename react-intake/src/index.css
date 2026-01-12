@@ -1,0 +1,257 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* CSS Variables for theming */
+:root {
+  --bg-primary: #0E1117;
+  --bg-secondary: #262730;
+  --bg-tertiary: #1E1E2E;
+  --surface: #262730;
+  --surface-hover: #3D3D4D;
+  --surface-border: #3D3D4D;
+  --text-primary: #FAFAFA;
+  --text-secondary: #A3A8B8;
+  --text-muted: #6B7280;
+  --primary: #FF4B4B;
+  --primary-hover: #FF6B6B;
+  --warning: #F59E0B;
+  --success: #10B981;
+  --error: #EF4444;
+  --info: #3B82F6;
+}
+
+:root.light-mode {
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F7F7F8;
+  --bg-tertiary: #EFEFEF;
+  --surface: #F0F2F6;
+  --surface-hover: #E4E6EA;
+  --surface-border: #D1D5DB;
+  --text-primary: #1F2937;
+  --text-secondary: #4B5563;
+  --text-muted: #9CA3AF;
+  --primary: #FF4B4B;
+  --primary-hover: #E03E3E;
+  --warning: #D97706;
+  --success: #059669;
+  --error: #DC2626;
+  --info: #2563EB;
+}
+
+body {
+  font-family: 'Source Sans Pro', system-ui, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Custom utilities */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Streamlit-inspired form elements with CSS variables */
+@layer components {
+  .st-input {
+    @apply w-full px-3 py-2.5 rounded-lg transition-all duration-200;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--surface-border);
+    color: var(--text-primary);
+  }
+  .st-input::placeholder {
+    color: var(--text-muted);
+  }
+  .st-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+  }
+
+  .st-textarea {
+    @apply w-full px-3 py-2.5 rounded-lg transition-all duration-200 resize-none;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--surface-border);
+    color: var(--text-primary);
+  }
+  .st-textarea::placeholder {
+    color: var(--text-muted);
+  }
+  .st-textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+  }
+
+  .st-select {
+    @apply w-full px-3 py-2.5 rounded-lg transition-all duration-200 cursor-pointer appearance-none;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--surface-border);
+    color: var(--text-primary);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23A3A8B8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+  }
+  .st-select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
+  }
+
+  .st-button {
+    @apply px-4 py-2.5 rounded-lg font-medium active:scale-[0.98] transition-all duration-200 
+           disabled:opacity-50 disabled:cursor-not-allowed;
+    background-color: var(--surface);
+    border: 1px solid var(--surface-border);
+    color: var(--text-primary);
+  }
+  .st-button:hover:not(:disabled) {
+    background-color: var(--surface-hover);
+  }
+
+  .st-button-primary {
+    @apply px-4 py-2.5 border-none rounded-lg text-white font-medium
+           hover:bg-primary-hover active:scale-[0.98] transition-all duration-200 
+           disabled:opacity-50 disabled:cursor-not-allowed;
+    background-color: var(--primary);
+  }
+
+  .st-card {
+    @apply rounded-lg p-4;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--surface-border);
+  }
+
+  .st-divider {
+    @apply my-4;
+    border-top: 1px solid var(--surface-border);
+  }
+
+  .st-label {
+    @apply block text-sm font-medium mb-1.5;
+    color: var(--text-secondary);
+  }
+
+  .st-caption {
+    @apply text-sm;
+    color: var(--text-muted);
+  }
+
+  .st-success {
+    @apply bg-success/10 border border-success/30 text-success rounded-lg px-4 py-3;
+  }
+
+  .st-warning {
+    @apply bg-warning/10 border border-warning/30 text-warning rounded-lg px-4 py-3;
+  }
+
+  .st-error {
+    @apply bg-error/10 border border-error/30 text-error rounded-lg px-4 py-3;
+  }
+
+  .st-info {
+    @apply bg-info/10 border border-info/30 text-info rounded-lg px-4 py-3;
+  }
+}
+
+/* Animation classes */
+.animate-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Signature canvas */
+.signature-canvas {
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* File input styling */
+input[type="file"] {
+  @apply w-full px-3 py-2.5 rounded-lg cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-lg 
+         file:border-0 file:bg-primary file:text-white file:font-medium file:cursor-pointer
+         transition-colors duration-200;
+  background-color: var(--bg-secondary);
+  border: 1px dashed var(--surface-border);
+  color: var(--text-primary);
+}
+input[type="file"]:hover {
+  border-color: var(--primary);
+}
+
+/* Radio button styling */
+.radio-group {
+  @apply flex gap-3;
+}
+
+.radio-option {
+  @apply flex items-center gap-2 cursor-pointer;
+}
+
+.radio-option input[type="radio"] {
+  @apply w-4 h-4 text-primary bg-background-secondary border-surface-border 
+         focus:ring-primary focus:ring-offset-0 cursor-pointer;
+}
+
+/* Checkbox styling */
+input[type="checkbox"] {
+  @apply w-4 h-4 text-primary bg-background-secondary border-surface-border rounded
+         focus:ring-primary focus:ring-offset-0 cursor-pointer;
+}
+
+/* Number input hide spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
