@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Wifi, WifiOff, Cloud, CloudOff, RefreshCw, Check, AlertCircle } from 'lucide-react';
-import { subscribeSyncStatus, SyncStatus as SyncStatusType, syncToCloud } from '../db/syncService';
+import { subscribeSyncStatus, SyncStatus as SyncStatusType, syncFull } from '../db/syncService';
 
 export default function SyncStatus() {
   const [status, setStatus] = useState<SyncStatusType>({
@@ -18,7 +18,8 @@ export default function SyncStatus() {
   }, []);
 
   const handleManualSync = () => {
-    syncToCloud();
+    // Perform full bidirectional sync (push + pull)
+    syncFull();
   };
 
   // Format last sync time
