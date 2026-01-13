@@ -164,7 +164,7 @@ export const useAuth = create<AuthState>((set, get) => ({
 
     try {
       // Create user with Supabase Auth
-      const { data, error } = await supabase.auth.admin.createUser({
+      const { error } = await supabase.auth.admin.createUser({
         email,
         password,
         email_confirm: true,
@@ -177,7 +177,7 @@ export const useAuth = create<AuthState>((set, get) => ({
 
       if (error) {
         // Fallback: try regular signup if admin API not available
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {

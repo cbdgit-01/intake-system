@@ -139,9 +139,6 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
             {recentForms.map((form) => {
               // Calculate form number for this consigner
               const consignerKey = form.consignerNumber || form.consignerName;
-              const allFormsForConsigner = recentForms.filter(f => 
-                (f.consignerNumber || f.consignerName) === consignerKey
-              );
               // Get total count from all forms (not just recent)
               const totalForConsigner = allForms.filter(f =>
                 (f.consignerNumber || f.consignerName) === consignerKey

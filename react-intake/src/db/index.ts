@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { IntakeForm, Consigner, Item } from '../types';
+import { IntakeForm, Consigner, IntakeItem } from '../types';
 
 // ============================================
 // FORM OPERATIONS
@@ -348,7 +348,7 @@ function mapDbFormToIntakeForm(data: any): IntakeForm {
     consignerEmail: data.consigner_email || undefined,
     intakeMode: data.intake_mode || undefined,
     status: data.status,
-    items: (data.items || []) as Item[],
+    items: (data.items || []) as IntakeItem[],
     enabledFields: data.enabled_fields || undefined,
     signatureData: data.signature_data || undefined,
     initials1: data.initials_1 || undefined,

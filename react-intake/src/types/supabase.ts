@@ -14,7 +14,7 @@ export interface Database {
           id: string;
           username: string;
           display_name: string;
-          role: 'staff' | 'admin';
+          role: string;
           created_at: string;
           updated_at: string;
         };
@@ -22,7 +22,7 @@ export interface Database {
           id: string;
           username: string;
           display_name: string;
-          role?: 'staff' | 'admin';
+          role?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -30,10 +30,11 @@ export interface Database {
           id?: string;
           username?: string;
           display_name?: string;
-          role?: 'staff' | 'admin';
+          role?: string;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       consigners: {
         Row: {
@@ -69,18 +70,19 @@ export interface Database {
           updated_at?: string;
           created_by?: string | null;
         };
+        Relationships: [];
       };
       forms: {
         Row: {
           id: string;
-          consigner_type: 'new' | 'existing';
+          consigner_type: string;
           consigner_name: string;
           consigner_number: string | null;
           consigner_address: string | null;
           consigner_phone: string | null;
           consigner_email: string | null;
-          intake_mode: 'detection' | 'general' | 'email' | null;
-          status: 'draft' | 'signed';
+          intake_mode: string | null;
+          status: string;
           items: Json;
           enabled_fields: Json | null;
           signature_data: string | null;
@@ -96,14 +98,14 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          consigner_type: 'new' | 'existing';
+          consigner_type: string;
           consigner_name: string;
           consigner_number?: string | null;
           consigner_address?: string | null;
           consigner_phone?: string | null;
           consigner_email?: string | null;
-          intake_mode?: 'detection' | 'general' | 'email' | null;
-          status?: 'draft' | 'signed';
+          intake_mode?: string | null;
+          status?: string;
           items?: Json;
           enabled_fields?: Json | null;
           signature_data?: string | null;
@@ -119,14 +121,14 @@ export interface Database {
         };
         Update: {
           id?: string;
-          consigner_type?: 'new' | 'existing';
+          consigner_type?: string;
           consigner_name?: string;
           consigner_number?: string | null;
           consigner_address?: string | null;
           consigner_phone?: string | null;
           consigner_email?: string | null;
-          intake_mode?: 'detection' | 'general' | 'email' | null;
-          status?: 'draft' | 'signed';
+          intake_mode?: string | null;
+          status?: string;
           items?: Json;
           enabled_fields?: Json | null;
           signature_data?: string | null;
@@ -140,14 +142,25 @@ export interface Database {
           created_by?: string | null;
           signed_by?: string | null;
         };
+        Relationships: [];
       };
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
     };
   };
 }
 
 // Helper types
 export type Profile = Database['public']['Tables']['profiles']['Row'];
-export type Consigner = Database['public']['Tables']['consigners']['Row'];
+export type ConsignerRecord = Database['public']['Tables']['consigners']['Row'];
 export type FormRecord = Database['public']['Tables']['forms']['Row'];
-
-

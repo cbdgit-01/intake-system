@@ -111,12 +111,13 @@ export interface IntakeForm {
   id: string;
   consignerType: 'new' | 'existing';
   consignerName: string;
-  consignerNumber: string;
-  consignerAddress: string;
-  consignerPhone: string;
+  consignerNumber?: string;
+  consignerAddress?: string;
+  consignerPhone?: string;
+  consignerEmail?: string;
   intakeMode: 'detection' | 'general' | 'email' | null;
   items: IntakeItem[];
-  enabledFields: Record<FieldId, boolean>;
+  enabledFields?: Record<FieldId, boolean>;
   status: 'draft' | 'signed';
   // Signature data
   signatureData?: string;
@@ -128,7 +129,11 @@ export interface IntakeForm {
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
+  signedAt?: Date;
 }
+
+// Alias for backwards compatibility
+export type Item = IntakeItem;
 
 // App navigation state
 export type AppView = 'dashboard' | 'intake' | 'preview';
