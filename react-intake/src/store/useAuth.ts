@@ -71,15 +71,36 @@ export const useAuth = create<AuthState>((set, get) => ({
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (session?.user) {
-        const user = await mapSupabaseUser(session.user);
-        if (user) {
-          set({ currentUser: user, isAuthenticated: true });
+        // Try to load profile from cloud if online
+        if (navigator.onLine) {
+          const user = await mapSupabaseUser(session.user);
+          if (user) {
+            set({ currentUser: user, isAuthenticated: true });
+            // Cache user profile in localStorage for offline use
+            localStorage.setItem('cached_user_profile', JSON.stringify(user));
+          }
+        } else {
+          // Offline: use cached profile if available
+          const cachedProfile = localStorage.getItem('cached_user_profile');
+          if (cachedProfile) {
+            const user = JSON.parse(cachedProfile);
+            set({ currentUser: user, isAuthenticated: true });
+          }
         }
       }
     } catch (error) {
       console.error('Auth initialization error:', error);
+
+      // If error occurred and we're offline, try using cached profile
+      if (!navigator.onLine) {
+        const cachedProfile = localStorage.getItem('cached_user_profile');
+        if (cachedProfile) {
+          const user = JSON.parse(cachedProfile);
+          set({ currentUser: user, isAuthenticated: true });
+        }
+      }
     } finally {
       set({ isLoading: false });
     }
@@ -90,9 +111,13 @@ export const useAuth = create<AuthState>((set, get) => ({
         const user = await mapSupabaseUser(session.user);
         if (user) {
           set({ currentUser: user, isAuthenticated: true });
+          // Cache user profile for offline use
+          localStorage.setItem('cached_user_profile', JSON.stringify(user));
         }
       } else if (event === 'SIGNED_OUT') {
         set({ currentUser: null, isAuthenticated: false });
+        // Clear cached profile on logout
+        localStorage.removeItem('cached_user_profile');
       }
     });
   },
@@ -100,6 +125,14 @@ export const useAuth = create<AuthState>((set, get) => ({
   login: async (email, password) => {
     if (!isSupabaseConfigured()) {
       return { success: false, error: 'Supabase not configured' };
+    }
+
+    // Check if offline
+    if (!navigator.onLine) {
+      return {
+        success: false,
+        error: 'Cannot login while offline. Please connect to the internet and try again. If you were previously logged in, the app will restore your session automatically.'
+      };
     }
 
     try {
@@ -116,6 +149,8 @@ export const useAuth = create<AuthState>((set, get) => ({
         const user = await mapSupabaseUser(data.user);
         if (user) {
           set({ currentUser: user, isAuthenticated: true });
+          // Cache user profile for offline use
+          localStorage.setItem('cached_user_profile', JSON.stringify(user));
           return { success: true };
         }
       }

@@ -231,6 +231,25 @@ export async function syncFromCloud(): Promise<void> {
 }
 
 // ============================================
+// FULL BIDIRECTIONAL SYNC
+// ============================================
+
+/**
+ * Performs full bidirectional sync: pushes local changes and pulls cloud changes
+ */
+export async function syncFull(): Promise<void> {
+  if (!navigator.onLine || !isSupabaseConfigured()) {
+    return;
+  }
+
+  // Push local changes to cloud
+  await syncToCloud();
+
+  // Pull cloud changes to local (to see changes from other devices)
+  await syncFromCloud();
+}
+
+// ============================================
 // PERIODIC SYNC
 // ============================================
 
@@ -240,10 +259,11 @@ export function startPeriodicSync(intervalMs: number = 30000) {
   if (syncInterval) {
     clearInterval(syncInterval);
   }
-  
+
   syncInterval = setInterval(() => {
     if (navigator.onLine) {
-      syncToCloud();
+      // Perform full bidirectional sync (push + pull)
+      syncFull();
     }
   }, intervalMs);
 }
