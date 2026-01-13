@@ -75,11 +75,21 @@ export const useAuth = create<AuthState>((set, get) => ({
       if (session?.user) {
         // Try to load profile from cloud if online
         if (navigator.onLine) {
-          const user = await mapSupabaseUser(session.user);
-          if (user) {
-            set({ currentUser: user, isAuthenticated: true });
-            // Cache user profile in localStorage for offline use
-            localStorage.setItem('cached_user_profile', JSON.stringify(user));
+          try {
+            const user = await mapSupabaseUser(session.user);
+            if (user) {
+              set({ currentUser: user, isAuthenticated: true });
+              // Cache user profile in localStorage for offline use
+              localStorage.setItem('cached_user_profile', JSON.stringify(user));
+            }
+          } catch (error) {
+            console.error('Failed to load profile from cloud, using cache', error);
+            // Fallback to cached profile if fetch fails
+            const cachedProfile = localStorage.getItem('cached_user_profile');
+            if (cachedProfile) {
+              const user = JSON.parse(cachedProfile);
+              set({ currentUser: user, isAuthenticated: true });
+            }
           }
         } else {
           // Offline: use cached profile if available
@@ -89,17 +99,27 @@ export const useAuth = create<AuthState>((set, get) => ({
             set({ currentUser: user, isAuthenticated: true });
           }
         }
+      } else {
+        // No session found - but check if we have a cached profile and we're offline
+        // This handles cases where Supabase session check fails while offline
+        if (!navigator.onLine) {
+          const cachedProfile = localStorage.getItem('cached_user_profile');
+          if (cachedProfile) {
+            console.log('No session found but offline - using cached profile');
+            const user = JSON.parse(cachedProfile);
+            set({ currentUser: user, isAuthenticated: true });
+          }
+        }
       }
     } catch (error) {
       console.error('Auth initialization error:', error);
 
-      // If error occurred and we're offline, try using cached profile
-      if (!navigator.onLine) {
-        const cachedProfile = localStorage.getItem('cached_user_profile');
-        if (cachedProfile) {
-          const user = JSON.parse(cachedProfile);
-          set({ currentUser: user, isAuthenticated: true });
-        }
+      // If error occurred, try using cached profile (especially important offline)
+      const cachedProfile = localStorage.getItem('cached_user_profile');
+      if (cachedProfile) {
+        console.log('Auth initialization failed - using cached profile');
+        const user = JSON.parse(cachedProfile);
+        set({ currentUser: user, isAuthenticated: true });
       }
     } finally {
       set({ isLoading: false });
@@ -108,16 +128,40 @@ export const useAuth = create<AuthState>((set, get) => ({
     // Listen for auth changes
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        const user = await mapSupabaseUser(session.user);
-        if (user) {
-          set({ currentUser: user, isAuthenticated: true });
-          // Cache user profile for offline use
-          localStorage.setItem('cached_user_profile', JSON.stringify(user));
+        // Try to fetch profile from cloud if online
+        if (navigator.onLine) {
+          try {
+            const user = await mapSupabaseUser(session.user);
+            if (user) {
+              set({ currentUser: user, isAuthenticated: true });
+              // Cache user profile for offline use
+              localStorage.setItem('cached_user_profile', JSON.stringify(user));
+            }
+          } catch (error) {
+            console.error('Failed to load profile, using cached version', error);
+            // Fallback to cached profile
+            const cachedProfile = localStorage.getItem('cached_user_profile');
+            if (cachedProfile) {
+              const user = JSON.parse(cachedProfile);
+              set({ currentUser: user, isAuthenticated: true });
+            }
+          }
+        } else {
+          // Offline: use cached profile
+          const cachedProfile = localStorage.getItem('cached_user_profile');
+          if (cachedProfile) {
+            const user = JSON.parse(cachedProfile);
+            set({ currentUser: user, isAuthenticated: true });
+          }
         }
       } else if (event === 'SIGNED_OUT') {
-        set({ currentUser: null, isAuthenticated: false });
-        // Clear cached profile on logout
-        localStorage.removeItem('cached_user_profile');
+        // Only process SIGNED_OUT if we're online or it's an explicit logout
+        // This prevents false logouts when offline
+        if (navigator.onLine || !session) {
+          set({ currentUser: null, isAuthenticated: false });
+          // Clear cached profile on logout
+          localStorage.removeItem('cached_user_profile');
+        }
       }
     });
   },

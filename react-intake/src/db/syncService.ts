@@ -8,6 +8,7 @@ import {
   importFormsFromCloud,
 } from './localDb';
 import { IntakeForm, IntakeItem, FieldId } from '../types';
+import { useStore } from '../store/useStore';
 
 const MAX_RETRIES = 3;
 let isSyncing = false;
@@ -83,54 +84,61 @@ export function initOnlineListener() {
 
 export async function syncToCloud(): Promise<void> {
   if (isSyncing || !navigator.onLine || !isSupabaseConfigured()) {
+    console.log('[Sync] Skipping syncToCloud - already syncing, offline, or not configured');
     return;
   }
-  
+
+  console.log('[Sync] Starting syncToCloud...');
   isSyncing = true;
   updateStatus({ isSyncing: true });
-  
+
   try {
     const queue = await getSyncQueue();
+    console.log(`[Sync] Found ${queue.length} items in sync queue`);
     updateStatus({ pendingCount: queue.length });
-    
+
     const { data: { user } } = await supabase.auth.getUser();
-    
+    console.log(`[Sync] User ID: ${user?.id || 'none'}`);
+
     for (const item of queue) {
       if (item.retryCount >= MAX_RETRIES) {
-        console.error(`Sync item ${item.id} exceeded max retries, skipping`);
+        console.error(`[Sync] Item ${item.id} exceeded max retries, skipping`);
         await removeSyncQueueItem(item.id!);
         continue;
       }
-      
+
       try {
         if (item.type === 'form') {
+          console.log(`[Sync] Syncing form ${item.entityId} (action: ${item.action})`);
           await syncFormItem(item, user?.id);
           await removeSyncQueueItem(item.id!);
-          
+
           // Mark local form as synced
           if (item.action !== 'delete') {
             await markFormSynced(item.entityId);
           }
+          console.log(`[Sync] Successfully synced form ${item.entityId}`);
         }
       } catch (error) {
-        console.error(`Sync error for ${item.type} ${item.entityId}:`, error);
+        console.error(`[Sync] Error syncing ${item.type} ${item.entityId}:`, error);
         await incrementSyncRetry(item.id!);
-        
+
         if (item.type === 'form' && item.action !== 'delete') {
           await markFormSyncError(item.entityId, String(error));
         }
       }
     }
-    
+
     const remainingQueue = await getSyncQueue();
-    updateStatus({ 
+    updateStatus({
       pendingCount: remainingQueue.length,
       lastSyncTime: Date.now(),
       lastError: null
     });
-    
+    console.log(`[Sync] syncToCloud completed. ${remainingQueue.length} items remaining in queue`);
+
   } catch (error) {
-    console.error('Sync error:', error);
+    console.error('[Sync] Sync error:', error);
     updateStatus({ lastError: String(error) });
   } finally {
     isSyncing = false;
@@ -186,17 +194,25 @@ async function syncFormItem(item: { action: string; entityId: string; data?: unk
 
 export async function syncFromCloud(): Promise<void> {
   if (!navigator.onLine || !isSupabaseConfigured()) {
+    console.log('[Sync] Skipping syncFromCloud - offline or not configured');
     return;
   }
-  
+
+  console.log('[Sync] Starting syncFromCloud...');
+
   try {
     const { data: forms, error } = await supabase
       .from('forms')
       .select('*')
       .order('updated_at', { ascending: false });
-    
-    if (error) throw error;
-    
+
+    if (error) {
+      console.error('[Sync] Error fetching forms from cloud:', error);
+      throw error;
+    }
+
+    console.log(`[Sync] Fetched ${forms?.length || 0} forms from cloud`);
+
     if (forms && forms.length > 0) {
       const mappedForms: IntakeForm[] = forms.map(data => ({
         id: data.id,
@@ -219,14 +235,20 @@ export async function syncFromCloud(): Promise<void> {
         updatedAt: new Date(data.updated_at),
         signedAt: data.signed_at ? new Date(data.signed_at) : undefined,
       }));
-      
+
+      console.log('[Sync] Importing forms into local IndexedDB...');
       await importFormsFromCloud(mappedForms);
+
+      console.log('[Sync] Triggering UI refresh...');
+      // Trigger UI refresh after importing forms
+      useStore.getState().triggerFormsRefresh();
     }
-    
+
     updateStatus({ lastSyncTime: Date.now() });
-    
+    console.log('[Sync] syncFromCloud completed successfully');
+
   } catch (error) {
-    console.error('Error syncing from cloud:', error);
+    console.error('[Sync] Error syncing from cloud:', error);
   }
 }
 
