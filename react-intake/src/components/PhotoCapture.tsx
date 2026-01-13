@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { X, Upload, Trash2, Check } from 'lucide-react';
+import { X, Camera, Image, Trash2, Check } from 'lucide-react';
 import { useStore } from '../store/useStore';
 
 interface PhotoCaptureProps {
@@ -9,7 +9,8 @@ interface PhotoCaptureProps {
 
 export default function PhotoCapture({ itemIndex, onClose }: PhotoCaptureProps) {
   const { items, addPhotoToItem, removePhotoFromItem, saveCurrentForm } = useStore();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
   const [newPhotos, setNewPhotos] = useState<string[]>([]);
 
   const item = items[itemIndex];
@@ -28,10 +29,9 @@ export default function PhotoCapture({ itemIndex, onClose }: PhotoCaptureProps) 
       reader.readAsDataURL(file);
     });
 
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    // Reset inputs
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+    if (libraryInputRef.current) libraryInputRef.current.value = '';
   };
 
   const handleRemoveNewPhoto = (photoIndex: number) => {
@@ -94,22 +94,40 @@ export default function PhotoCapture({ itemIndex, onClose }: PhotoCaptureProps) 
         </div>
       )}
 
-      {/* Upload area */}
+      {/* Two separate buttons for camera and library */}
       <div className="mb-6">
-        <div 
-          onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-surface-border rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
-        >
-          <Upload size={48} className="mx-auto mb-4 text-text-muted" />
-          <p className="text-text-secondary mb-2">
-            Take a photo or choose from library
-          </p>
-          <p className="text-sm text-text-muted">
-            Supports JPEG, PNG (multiple files)
-          </p>
+        <p className="st-label mb-3">Add photos</p>
+        <div className="grid grid-cols-2 gap-3">
+          {/* Camera button */}
+          <button
+            onClick={() => cameraInputRef.current?.click()}
+            className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-surface-border rounded-lg hover:border-primary/50 transition-colors"
+          >
+            <Camera size={32} className="mb-2 text-primary" />
+            <span className="text-sm font-medium">Take Photo</span>
+          </button>
+          
+          {/* Library button */}
+          <button
+            onClick={() => libraryInputRef.current?.click()}
+            className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-surface-border rounded-lg hover:border-primary/50 transition-colors"
+          >
+            <Image size={32} className="mb-2 text-primary" />
+            <span className="text-sm font-medium">Photo Library</span>
+          </button>
         </div>
+        
+        {/* Hidden file inputs */}
         <input
-          ref={fileInputRef}
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+        <input
+          ref={libraryInputRef}
           type="file"
           accept="image/*"
           multiple
@@ -160,5 +178,3 @@ export default function PhotoCapture({ itemIndex, onClose }: PhotoCaptureProps) 
     </div>
   );
 }
-
-
