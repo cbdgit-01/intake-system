@@ -115,7 +115,6 @@ export default function PhotoCapture({ itemIndex, onClose }: PhotoCaptureProps) 
           multiple
           onChange={handleFileUpload}
           className="hidden"
-          capture="environment"
         />
       </div>
 

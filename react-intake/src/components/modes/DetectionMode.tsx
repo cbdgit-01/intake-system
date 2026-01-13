@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Upload, Camera, Settings, Eye, Plus, Minus, RotateCcw, Loader2, WifiOff } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { ArrowLeft, Upload, Camera, Settings, Eye, Plus, Minus, RotateCcw, Loader2 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import ItemCard from '../ItemCard';
 import PhotoCapture from '../PhotoCapture';
@@ -29,22 +29,7 @@ export default function DetectionMode() {
   const [detectionComplete, setDetectionComplete] = useState(items.length > 0);
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectionMessage, setDetectionMessage] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Track online status
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   const handleBack = () => {
     if (isEditingExisting) {
@@ -72,19 +57,6 @@ export default function DetectionMode() {
   };
 
   const runDetection = async (file: File) => {
-    // Skip detection if offline - just add as single item
-    if (!navigator.onLine) {
-      setDetectionMessage('Offline mode - image added as single item.');
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string;
-        addItem({ photos: [base64] });
-        setDetectionComplete(true);
-      };
-      reader.readAsDataURL(file);
-      return;
-    }
-
     setIsDetecting(true);
     setDetectionMessage('Detecting items...');
 
@@ -227,19 +199,6 @@ export default function DetectionMode() {
           <p className="text-text-secondary mb-4">
             Upload or take a photo of the items. The system will try to detect individual items automatically.
           </p>
-
-          {/* Offline warning */}
-          {!isOnline && (
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-warning/20 text-warning mb-4">
-              <WifiOff size={20} />
-              <div>
-                <p className="font-medium">You're offline</p>
-                <p className="text-sm opacity-80">
-                  Auto-detection requires internet. Photos will be saved as single items.
-                </p>
-              </div>
-            </div>
-          )}
 
           {!mainImage ? (
             <>
