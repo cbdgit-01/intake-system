@@ -1,175 +1,119 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { IntakeForm, Consigner, IntakeItem } from '../types';
+import {
+  saveFormLocally,
+  loadFormLocally,
+  getAllFormsLocally,
+  deleteFormLocally,
+  saveConsignerLocally,
+  searchConsignersLocally,
+  factoryResetLocal,
+  localDb,
+  LocalConsigner
+} from './localDb';
+import { syncToCloud } from './syncService';
 
 // ============================================
-// FORM OPERATIONS
+// FORM OPERATIONS (Local-First)
 // ============================================
 
 export async function saveForm(form: IntakeForm): Promise<string> {
-  if (!isSupabaseConfigured()) {
-    console.error('Supabase not configured');
-    return form.id;
-  }
-
-  const { data: { user } } = await supabase.auth.getUser();
+  // Always save locally first
+  await saveFormLocally(form);
   
-  // Check if form exists
-  const { data: existing } = await supabase
-    .from('forms')
-    .select('id')
-    .eq('id', form.id)
-    .single();
-
-  const formData = {
-    id: form.id,
-    consigner_type: form.consignerType,
-    consigner_name: form.consignerName || '',
-    consigner_number: form.consignerNumber || null,
-    consigner_address: form.consignerAddress || null,
-    consigner_phone: form.consignerPhone || null,
-    consigner_email: form.consignerEmail || null,
-    intake_mode: form.intakeMode || null,
-    status: form.status || 'draft',
-    items: JSON.parse(JSON.stringify(form.items)),
-    enabled_fields: form.enabledFields || null,
-    signature_data: form.signatureData || null,
-    initials_1: form.initials1 || null,
-    initials_2: form.initials2 || null,
-    initials_3: form.initials3 || null,
-    accepted_by: form.acceptedBy || null,
-    signed_at: form.signedAt ? form.signedAt.toISOString() : null,
-    created_by: user?.id || null,
-    signed_by: form.status === 'signed' ? user?.id : null,
-  };
-
-  if (existing) {
-    const { error } = await supabase
-      .from('forms')
-      .update(formData)
-      .eq('id', form.id);
-    
-    if (error) throw error;
-  } else {
-    const { error } = await supabase
-      .from('forms')
-      .insert(formData);
-    
-    if (error) throw error;
+  // Try to sync to cloud if online
+  if (navigator.onLine && isSupabaseConfigured()) {
+    // Trigger background sync
+    syncToCloud().catch(console.error);
   }
-
+  
   return form.id;
 }
 
 export async function loadForm(formId: string): Promise<IntakeForm | undefined> {
-  if (!isSupabaseConfigured()) return undefined;
+  // Try local first
+  const localForm = await loadFormLocally(formId);
+  if (localForm) return localForm;
+  
+  // Fall back to cloud if not found locally
+  if (navigator.onLine && isSupabaseConfigured()) {
+    const { data, error } = await supabase
+      .from('forms')
+      .select('*')
+      .eq('id', formId)
+      .single();
 
-  const { data, error } = await supabase
-    .from('forms')
-    .select('*')
-    .eq('id', formId)
-    .single();
-
-  if (error || !data) return undefined;
-
-  return mapDbFormToIntakeForm(data);
+    if (error || !data) return undefined;
+    
+    return mapDbFormToIntakeForm(data);
+  }
+  
+  return undefined;
 }
 
 export async function getAllForms(status?: 'draft' | 'signed'): Promise<IntakeForm[]> {
-  if (!isSupabaseConfigured()) return [];
-
-  let query = supabase
-    .from('forms')
-    .select('*')
-    .order('updated_at', { ascending: false });
-
-  if (status) {
-    query = query.eq('status', status);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('Error fetching forms:', error);
-    return [];
-  }
-
-  return (data || []).map(mapDbFormToIntakeForm);
+  // Get from local database
+  return await getAllFormsLocally(status);
 }
 
 export async function deleteForm(formId: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-
-  const { error } = await supabase
-    .from('forms')
-    .delete()
-    .eq('id', formId);
-
-  if (error) throw error;
+  await deleteFormLocally(formId);
+  
+  // Sync deletion to cloud
+  if (navigator.onLine && isSupabaseConfigured()) {
+    syncToCloud().catch(console.error);
+  }
 }
 
 export async function factoryResetDatabase(): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-
-  // Delete all forms (admin only, enforced by RLS)
-  await supabase.from('forms').delete().neq('id', '');
+  // Clear local database
+  await factoryResetLocal();
   
-  // Delete all consigners
-  await supabase.from('consigners').delete().neq('id', '');
+  // Clear cloud if online
+  if (navigator.onLine && isSupabaseConfigured()) {
+    await supabase.from('forms').delete().neq('id', '');
+    await supabase.from('consigners').delete().neq('id', '');
+  }
 }
 
 export async function updateFormConsignerNumber(formId: string, consignerNumber: string): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-
-  const { error } = await supabase
-    .from('forms')
-    .update({ consigner_number: consignerNumber })
-    .eq('id', formId);
-
-  if (error) throw error;
+  const form = await loadFormLocally(formId);
+  if (form) {
+    form.consignerNumber = consignerNumber;
+    await saveFormLocally(form);
+  }
+  
+  if (navigator.onLine && isSupabaseConfigured()) {
+    syncToCloud().catch(console.error);
+  }
 }
 
 export async function autoLinkFormsByName(consignerName: string, consignerNumber: string): Promise<number> {
-  if (!isSupabaseConfigured() || !consignerName || !consignerNumber) return 0;
+  if (!consignerName || !consignerNumber) return 0;
 
   const nameLower = consignerName.toLowerCase().trim();
-
-  // Find all forms with same name but no consigner number
-  const { data: formsToLink, error } = await supabase
-    .from('forms')
-    .select('id, consigner_name')
-    .is('consigner_number', null);
-
-  if (error || !formsToLink) return 0;
-
-  // Filter by name (case-insensitive)
-  const matchingForms = formsToLink.filter(
-    f => f.consigner_name?.toLowerCase().trim() === nameLower
-  );
-
-  // Update each form
-  for (const form of matchingForms) {
-    await supabase
-      .from('forms')
-      .update({ consigner_number: consignerNumber })
-      .eq('id', form.id);
+  const allForms = await getAllFormsLocally();
+  
+  let linkedCount = 0;
+  
+  for (const form of allForms) {
+    if (!form.consignerNumber && form.consignerName?.toLowerCase().trim() === nameLower) {
+      form.consignerNumber = consignerNumber;
+      await saveFormLocally(form);
+      linkedCount++;
+    }
+  }
+  
+  if (linkedCount > 0 && navigator.onLine) {
+    syncToCloud().catch(console.error);
   }
 
-  return matchingForms.length;
+  return linkedCount;
 }
 
 export async function getMostRecentForm(): Promise<IntakeForm | undefined> {
-  if (!isSupabaseConfigured()) return undefined;
-
-  const { data, error } = await supabase
-    .from('forms')
-    .select('*')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single();
-
-  if (error || !data) return undefined;
-
-  return mapDbFormToIntakeForm(data);
+  const forms = await getAllFormsLocally();
+  return forms[0];
 }
 
 // ============================================
@@ -177,116 +121,138 @@ export async function getMostRecentForm(): Promise<IntakeForm | undefined> {
 // ============================================
 
 export async function saveConsigner(consigner: Omit<Consigner, 'id' | 'createdAt' | 'updatedAt'>): Promise<void> {
-  if (!isSupabaseConfigured()) return;
+  const fullConsigner: Consigner = {
+    ...consigner,
+    id: crypto.randomUUID(),
+    address: consigner.address || '',
+    phone: consigner.phone || '',
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+  await saveConsignerLocally(fullConsigner);
+  
+  // Also save to cloud if online
+  if (navigator.onLine && isSupabaseConfigured()) {
+    const { data: { user } } = await supabase.auth.getUser();
 
-  const { data: { user } } = await supabase.auth.getUser();
-
-  // Check if consigner exists
-  const { data: existing } = await supabase
-    .from('consigners')
-    .select('id')
-    .eq('number', consigner.consignerNumber)
-    .single();
-
-  if (existing) {
-    await supabase
+    const { data: existing } = await supabase
       .from('consigners')
-      .update({
-        name: consigner.name,
-        address: consigner.address || null,
-        phone: consigner.phone || null,
-        email: consigner.email || null,
-      })
-      .eq('id', existing.id);
-  } else {
-    await supabase
-      .from('consigners')
-      .insert({
-        name: consigner.name,
-        number: consigner.consignerNumber,
-        address: consigner.address || null,
-        phone: consigner.phone || null,
-        email: consigner.email || null,
-        created_by: user?.id || null,
-      });
+      .select('id')
+      .eq('number', consigner.consignerNumber)
+      .single();
+
+    if (existing) {
+      await supabase
+        .from('consigners')
+        .update({
+          name: consigner.name,
+          address: consigner.address || null,
+          phone: consigner.phone || null,
+          email: consigner.email || null,
+        })
+        .eq('id', existing.id);
+    } else {
+      await supabase
+        .from('consigners')
+        .insert({
+          name: consigner.name,
+          number: consigner.consignerNumber,
+          address: consigner.address || null,
+          phone: consigner.phone || null,
+          email: consigner.email || null,
+          created_by: user?.id || null,
+        });
+    }
   }
 }
 
 export async function lookupConsigner(consignerNumber?: string, name?: string): Promise<Consigner | undefined> {
-  if (!isSupabaseConfigured()) return undefined;
-
-  let query = supabase.from('consigners').select('*');
-
+  // Try local first
   if (consignerNumber) {
-    query = query.eq('number', consignerNumber);
-  } else if (name) {
-    query = query.ilike('name', `${name}%`);
-  } else {
-    return undefined;
+    const local = await localDb.consigners.where('consignerNumber').equals(consignerNumber).first();
+    if (local) {
+      const { _syncStatus, _lastModified, ...consigner } = local;
+      return consigner as Consigner;
+    }
   }
+  
+  // Fall back to cloud
+  if (navigator.onLine && isSupabaseConfigured()) {
+    let query = supabase.from('consigners').select('*');
 
-  const { data, error } = await query.limit(1).single();
+    if (consignerNumber) {
+      query = query.eq('number', consignerNumber);
+    } else if (name) {
+      query = query.ilike('name', `${name}%`);
+    } else {
+      return undefined;
+    }
 
-  if (error || !data) return undefined;
+    const { data, error } = await query.limit(1).single();
 
-  return mapDbConsignerToConsigner(data);
+    if (error || !data) return undefined;
+
+    return mapDbConsignerToConsigner(data);
+  }
+  
+  return undefined;
 }
 
 export async function searchConsigners(query: string): Promise<Consigner[]> {
-  if (!isSupabaseConfigured()) return [];
+  // Search locally first
+  const localResults = await searchConsignersLocally(query);
+  if (localResults.length > 0 || !navigator.onLine) {
+    return localResults;
+  }
+  
+  // Fall back to cloud
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase
+      .from('consigners')
+      .select('*')
+      .or(`name.ilike.%${query}%,number.ilike.%${query}%`)
+      .limit(10);
 
-  const { data, error } = await supabase
-    .from('consigners')
-    .select('*')
-    .or(`name.ilike.%${query}%,number.ilike.%${query}%`)
-    .limit(10);
+    if (error) return [];
 
-  if (error) return [];
-
-  return (data || []).map(mapDbConsignerToConsigner);
+    return (data || []).map(mapDbConsignerToConsigner);
+  }
+  
+  return [];
 }
 
 export async function getAllConsigners(): Promise<Consigner[]> {
-  if (!isSupabaseConfigured()) return [];
+  const local = await localDb.consigners.orderBy('name').toArray();
+  if (local.length > 0 || !navigator.onLine) {
+    return local.map(({ _syncStatus, _lastModified, ...c }: LocalConsigner) => c as Consigner);
+  }
+  
+  if (isSupabaseConfigured()) {
+    const { data, error } = await supabase
+      .from('consigners')
+      .select('*')
+      .order('name');
 
-  const { data, error } = await supabase
-    .from('consigners')
-    .select('*')
-    .order('name');
+    if (error) return [];
 
-  if (error) return [];
-
-  return (data || []).map(mapDbConsignerToConsigner);
+    return (data || []).map(mapDbConsignerToConsigner);
+  }
+  
+  return [];
 }
 
 export async function getFormsByConsigner(consignerNumber: string): Promise<IntakeForm[]> {
-  if (!isSupabaseConfigured()) return [];
-
-  const { data, error } = await supabase
-    .from('forms')
-    .select('*')
-    .eq('consigner_number', consignerNumber)
-    .order('updated_at', { ascending: false });
-
-  if (error) return [];
-
-  return (data || []).map(mapDbFormToIntakeForm);
+  const allForms = await getAllFormsLocally();
+  return allForms.filter(f => f.consignerNumber === consignerNumber);
 }
 
 export async function getUniqueConsignersFromForms(): Promise<Map<string, string>> {
-  if (!isSupabaseConfigured()) return new Map();
-
-  const { data, error } = await supabase
-    .from('forms')
-    .select('consigner_name, consigner_number')
-    .not('consigner_number', 'is', null);
-
-  if (error || !data) return new Map();
-
+  const allForms = await getAllFormsLocally();
   const consignersMap = new Map<string, string>();
-  data.forEach((form) => {
-    if (form.consigner_number && !consignersMap.has(form.consigner_number)) {
-      consignersMap.set(form.consigner_number, form.consigner_name);
+  
+  allForms.forEach((form) => {
+    if (form.consignerNumber && !consignersMap.has(form.consignerNumber)) {
+      consignersMap.set(form.consignerNumber, form.consignerName);
     }
   });
 
@@ -299,17 +265,9 @@ export async function searchConsignersFromForms(query: string): Promise<Array<{
   address?: string;
   phone?: string;
 }>> {
-  if (!isSupabaseConfigured()) return [];
-
-  const { data, error } = await supabase
-    .from('forms')
-    .select('consigner_name, consigner_number, consigner_address, consigner_phone')
-    .or(`consigner_name.ilike.%${query}%,consigner_number.ilike.%${query}%`)
-    .order('updated_at', { ascending: false });
-
-  if (error || !data) return [];
-
-  // Deduplicate by consignerNumber or name
+  const allForms = await getAllFormsLocally();
+  const queryLower = query.toLowerCase();
+  
   const seen = new Map<string, {
     name: string;
     consignerNumber: string;
@@ -317,17 +275,22 @@ export async function searchConsignersFromForms(query: string): Promise<Array<{
     phone?: string;
   }>();
 
-  data.forEach(form => {
-    const key = form.consigner_number || form.consigner_name || '';
-    if (key && !seen.has(key)) {
-      seen.set(key, {
-        name: form.consigner_name || '',
-        consignerNumber: form.consigner_number || '',
-        address: form.consigner_address || undefined,
-        phone: form.consigner_phone || undefined,
-      });
-    }
-  });
+  allForms
+    .filter(form => 
+      form.consignerName?.toLowerCase().includes(queryLower) ||
+      form.consignerNumber?.toLowerCase().includes(queryLower)
+    )
+    .forEach(form => {
+      const key = form.consignerNumber || form.consignerName || '';
+      if (key && !seen.has(key)) {
+        seen.set(key, {
+          name: form.consignerName || '',
+          consignerNumber: form.consignerNumber || '',
+          address: form.consignerAddress || undefined,
+          phone: form.consignerPhone || undefined,
+        });
+      }
+    });
 
   return Array.from(seen.values()).slice(0, 10);
 }

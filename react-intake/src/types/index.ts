@@ -96,11 +96,11 @@ export interface IntakeItem {
 
 // Consigner type
 export interface Consigner {
-  id?: number;
+  id?: string;
   consignerNumber: string;
   name: string;
-  address: string;
-  phone: string;
+  address?: string;
+  phone?: string;
   email?: string;
   createdAt?: Date;
   updatedAt?: Date;

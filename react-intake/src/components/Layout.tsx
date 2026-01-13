@@ -1,8 +1,10 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
 import Sidebar from './Sidebar';
 import ThemeToggle from './ThemeToggle';
 import UserMenu from './UserMenu';
+import SyncStatus from './SyncStatus';
+import { initOnlineListener, syncFromCloud, startPeriodicSync, stopPeriodicSync } from '../db/syncService';
 
 interface LayoutProps {
   children: ReactNode;
@@ -10,6 +12,22 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Initialize sync service
+  useEffect(() => {
+    const cleanupOnlineListener = initOnlineListener();
+    
+    // Initial sync from cloud
+    syncFromCloud();
+    
+    // Start periodic sync every 30 seconds
+    startPeriodicSync(30000);
+    
+    return () => {
+      cleanupOnlineListener();
+      stopPeriodicSync();
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -69,6 +87,7 @@ export default function Layout({ children }: LayoutProps) {
           </div>
           
           <div className="flex items-center gap-3">
+            <SyncStatus />
             <ThemeToggle />
             <UserMenu />
           </div>

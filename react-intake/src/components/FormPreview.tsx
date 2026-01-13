@@ -196,16 +196,17 @@ export default function FormPreview() {
         {/* Acknowledgment */}
         <div className="my-6 p-4 bg-gray-50 rounded-lg">
           <p className="text-sm text-gray-600">
-            I hereby agree to consign the items listed below with Consigned By Design.
-            I understand and accept the terms and conditions of the consignment agreement.
-          </p>
+            I hereby agree to consign with Consigned By Design (CBD) the items listed here. These items are my personal property
+            or items I am authorized to sell. By consigning, I acknowledge, accept, and agree to all the terms of the CBD contract.
+            Items listed here are subject to further review before being accepted or maintained for resale.
+            </p>
         </div>
 
         {/* Initials section */}
         <div className="mb-6 space-y-2 text-sm">
-          <p>I have reviewed and agree to the items listed. <strong>Initials: {initials.init1 || '______'}</strong></p>
-          <p>I understand and accept the consignment terms. <strong>Initials: {initials.init2 || '______'}</strong></p>
-          <p>I confirm all item information is accurate. <strong>Initials: {initials.init3 || '______'}</strong></p>
+          <p>I agree to special Holiday terms and the shorter consignment period. <strong>Initials: {initials.init1 || '______'}</strong></p>
+          <p>I have no specific requirements other than those noted below. <strong>Initials: {initials.init2 || '______'}</strong></p>
+          <p>I agree to participate in all sales & promotions of CBD and markdowns will be equally shared as per contract. <strong>Initials: {initials.init3 || '______'}</strong></p>
         </div>
 
         {/* Signature line */}
