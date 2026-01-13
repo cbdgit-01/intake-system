@@ -78,7 +78,7 @@ export default function UserMenu() {
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <Users size={18} />
-                <span>Admin Settings</span>
+                <span>Manage Users</span>
               </button>
             </div>
           )}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, ArrowLeft, FileText, Edit, Trash2, Eye, Plus, User } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { getAllForms, deleteForm } from '../db';
+import { syncFromCloud } from '../db/syncService';
 import { IntakeForm } from '../types';
 
 export default function Dashboard() {
@@ -25,7 +26,11 @@ export default function Dashboard() {
   }, [formsVersion]);
 
   const loadAllData = async () => {
-    // Load forms from Supabase
+    // Pull latest data from cloud first (to see changes from other devices)
+    if (navigator.onLine) {
+      await syncFromCloud();
+    }
+    // Then load from local database
     const forms = await getAllForms();
     setAllForms(forms);
   };

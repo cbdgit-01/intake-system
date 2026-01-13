@@ -111,7 +111,7 @@ export default function PhotoCapture({ itemIndex, onClose }: PhotoCaptureProps) 
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/jpg"
+          accept="image/*"
           multiple
           onChange={handleFileUpload}
           className="hidden"
