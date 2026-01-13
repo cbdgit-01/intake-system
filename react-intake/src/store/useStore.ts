@@ -278,8 +278,8 @@ export const useStore = create<AppState>((set, get) => ({
       await saveConsigner({
         consignerNumber: formToSave.consignerNumber,
         name: formToSave.consignerName,
-        address: formToSave.consignerAddress,
-        phone: formToSave.consignerPhone,
+        address: formToSave.consignerAddress || '',
+        phone: formToSave.consignerPhone || '',
       });
 
       // Auto-link: if this form has a number and name, update any previous 

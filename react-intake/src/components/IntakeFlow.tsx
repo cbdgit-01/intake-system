@@ -45,7 +45,7 @@ export default function IntakeFlow() {
       )}
 
       {/* Progress indicator */}
-      {!isViewOnly && intakeStep !== 'preview' && (
+      {!isViewOnly && (
         <div className="flex items-center gap-2 mb-6">
           <StepIndicator 
             step={1} 
