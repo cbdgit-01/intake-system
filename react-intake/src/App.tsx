@@ -129,7 +129,7 @@ function App() {
       {(isOffline || unsyncedCount > 0) && (
         <div 
           className={`fixed top-0 left-0 right-0 z-50 px-4 py-2 text-sm text-center flex items-center justify-center gap-2 ${
-            isOffline ? 'bg-warning text-warning-foreground' : 'bg-info text-info-foreground'
+            isOffline ? 'bg-warning text-black' : 'bg-info text-white'
           }`}
         >
           {isOffline ? (
