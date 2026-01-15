@@ -31,6 +31,58 @@ export default function ItemCard({ item, index }: ItemCardProps) {
 
     switch (config.type) {
       case 'text':
+        // Special handling for dimensions - show 3 boxes
+        if (fieldId === 'dimensions') {
+          const dimValue = (value as string) || '';
+          const parts = dimValue.split(' x ').map(p => p.replace(/"/g, '').trim());
+          const [length = '', width = '', height = ''] = parts;
+          
+          const updateDimensions = (l: string, w: string, h: string) => {
+            const formatted = [l, w, h].filter(Boolean).join('" x ') + (l || w || h ? '"' : '');
+            handleFieldChange('dimensions', formatted || '');
+          };
+          
+          return (
+            <div key={fieldId}>
+              <label className="st-label">{config.label}</label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    className="st-input text-center"
+                    value={length}
+                    onChange={(e) => updateDimensions(e.target.value, width, height)}
+                    disabled={isViewOnly}
+                    placeholder="L"
+                  />
+                </div>
+                <span className="text-text-muted">×</span>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    className="st-input text-center"
+                    value={width}
+                    onChange={(e) => updateDimensions(length, e.target.value, height)}
+                    disabled={isViewOnly}
+                    placeholder="W"
+                  />
+                </div>
+                <span className="text-text-muted">×</span>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    className="st-input text-center"
+                    value={height}
+                    onChange={(e) => updateDimensions(length, width, e.target.value)}
+                    disabled={isViewOnly}
+                    placeholder="H"
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        }
+        
         return (
           <div key={fieldId}>
             <label className="st-label">{config.label}</label>
@@ -40,7 +92,6 @@ export default function ItemCard({ item, index }: ItemCardProps) {
               value={value as string}
               onChange={(e) => handleFieldChange(fieldId as keyof IntakeItem, e.target.value)}
               disabled={isViewOnly}
-              placeholder={fieldId === 'dimensions' ? 'e.g., 24" x 36" x 18"' : ''}
             />
           </div>
         );

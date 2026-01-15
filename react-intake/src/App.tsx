@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useStore } from './store/useStore';
 import { useAuth } from './store/useAuth';
@@ -8,17 +8,62 @@ import IntakeFlow from './components/IntakeFlow';
 import FormPreview from './components/FormPreview';
 import LoginPage from './components/LoginPage';
 import UserManagement from './components/UserManagement';
-import { Loader2 } from 'lucide-react';
+import { Loader2, WifiOff, RefreshCw } from 'lucide-react';
+import { 
+  setupOnlineSync, 
+  subscribeToRealtimeUpdates, 
+  fullSync,
+  getUnsyncedCount,
+} from './db';
 
 function App() {
   const [searchParams] = useSearchParams();
-  const { currentView, loadExistingForm, initNewForm, currentForm } = useStore();
-  const { isAuthenticated, isLoading, initialize } = useAuth();
+  const { currentView, loadExistingForm, initNewForm, currentForm, triggerFormsRefresh } = useStore();
+  const { isAuthenticated, isLoading, initialize, isOffline } = useAuth();
+  const [unsyncedCount, setUnsyncedCount] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Initialize auth on mount
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Setup sync and realtime subscriptions when authenticated
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Setup online/offline sync listener
+    const cleanupSync = setupOnlineSync();
+
+    // Subscribe to realtime updates
+    const cleanupRealtime = subscribeToRealtimeUpdates(() => {
+      // Refresh UI when remote changes come in
+      triggerFormsRefresh();
+    });
+
+    // Initial sync
+    if (navigator.onLine) {
+      setIsSyncing(true);
+      fullSync().finally(() => {
+        setIsSyncing(false);
+        triggerFormsRefresh();
+      });
+    }
+
+    // Update unsynced count periodically
+    const updateUnsyncedCount = async () => {
+      const count = await getUnsyncedCount();
+      setUnsyncedCount(count);
+    };
+    updateUnsyncedCount();
+    const interval = setInterval(updateUnsyncedCount, 5000);
+
+    return () => {
+      cleanupSync();
+      cleanupRealtime();
+      clearInterval(interval);
+    };
+  }, [isAuthenticated, triggerFormsRefresh]);
 
   // Handle URL-based form recovery
   useEffect(() => {
@@ -31,6 +76,20 @@ function App() {
       }
     }
   }, [searchParams, currentForm, loadExistingForm, initNewForm, isAuthenticated]);
+
+  // Manual sync handler
+  const handleManualSync = async () => {
+    if (isSyncing || !navigator.onLine) return;
+    setIsSyncing(true);
+    try {
+      await fullSync();
+      triggerFormsRefresh();
+      const count = await getUnsyncedCount();
+      setUnsyncedCount(count);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Show loading while checking auth
   if (isLoading) {
@@ -65,9 +124,41 @@ function App() {
   const showingUsers = searchParams.get('view') === 'users';
 
   return (
-    <Layout>
-      {showingUsers ? <UserManagement /> : renderContent()}
-    </Layout>
+    <>
+      {/* Offline/Sync status bar */}
+      {(isOffline || unsyncedCount > 0) && (
+        <div 
+          className={`fixed top-0 left-0 right-0 z-50 px-4 py-2 text-sm text-center flex items-center justify-center gap-2 ${
+            isOffline ? 'bg-warning text-warning-foreground' : 'bg-info text-info-foreground'
+          }`}
+        >
+          {isOffline ? (
+            <>
+              <WifiOff size={16} />
+              <span>You're offline. Changes will sync when connected.</span>
+            </>
+          ) : unsyncedCount > 0 ? (
+            <>
+              <span>{unsyncedCount} change{unsyncedCount !== 1 ? 's' : ''} pending sync</span>
+              <button
+                onClick={handleManualSync}
+                disabled={isSyncing}
+                className="ml-2 px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 transition-colors flex items-center gap-1"
+              >
+                <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+                {isSyncing ? 'Syncing...' : 'Sync now'}
+              </button>
+            </>
+          ) : null}
+        </div>
+      )}
+      
+      <div className={isOffline || unsyncedCount > 0 ? 'pt-10' : ''}>
+        <Layout>
+          {showingUsers ? <UserManagement /> : renderContent()}
+        </Layout>
+      </div>
+    </>
   );
 }
 

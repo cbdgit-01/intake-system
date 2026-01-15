@@ -26,9 +26,11 @@ html {
   --primary: #FF4B4B;
   --primary-hover: #FF6B6B;
   --warning: #F59E0B;
+  --warning-foreground: #000000;
   --success: #10B981;
   --error: #EF4444;
   --info: #3B82F6;
+  --info-foreground: #FFFFFF;
 }
 
 :root.light-mode {

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -16,6 +17,7 @@ interface AuthState {
   currentUser: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isOffline: boolean;
   
   // User management
   users: User[];
@@ -35,274 +37,292 @@ interface AuthState {
   
   // Factory reset
   factoryResetUsers: () => Promise<void>;
+  
+  // Offline support
+  setOffline: (offline: boolean) => void;
 }
 
 // Map Supabase user to our User type
 async function mapSupabaseUser(supabaseUser: SupabaseUser): Promise<User | null> {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', supabaseUser.id)
-    .single();
-
-  if (!profile) return null;
-
-  return {
-    id: supabaseUser.id,
-    username: profile.username,
-    name: profile.display_name,
-    email: supabaseUser.email,
-    role: profile.role as 'admin' | 'staff',
-    createdAt: new Date(profile.created_at),
-  };
-}
-
-export const useAuth = create<AuthState>((set, get) => ({
-  currentUser: null,
-  isAuthenticated: false,
-  isLoading: true,
-  users: [],
-
-  initialize: async () => {
-    if (!isSupabaseConfigured()) {
-      set({ isLoading: false });
-      return;
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (session?.user) {
-        // Try to load profile from cloud if online
-        if (navigator.onLine) {
-          const user = await mapSupabaseUser(session.user);
-          if (user) {
-            set({ currentUser: user, isAuthenticated: true });
-            // Cache user profile in localStorage for offline use
-            localStorage.setItem('cached_user_profile', JSON.stringify(user));
-          }
-        } else {
-          // Offline: use cached profile if available
-          const cachedProfile = localStorage.getItem('cached_user_profile');
-          if (cachedProfile) {
-            const user = JSON.parse(cachedProfile);
-            set({ currentUser: user, isAuthenticated: true });
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Auth initialization error:', error);
-
-      // If error occurred and we're offline, try using cached profile
-      if (!navigator.onLine) {
-        const cachedProfile = localStorage.getItem('cached_user_profile');
-        if (cachedProfile) {
-          const user = JSON.parse(cachedProfile);
-          set({ currentUser: user, isAuthenticated: true });
-        }
-      }
-    } finally {
-      set({ isLoading: false });
-    }
-
-    // Listen for auth changes
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        const user = await mapSupabaseUser(session.user);
-        if (user) {
-          set({ currentUser: user, isAuthenticated: true });
-          // Cache user profile for offline use
-          localStorage.setItem('cached_user_profile', JSON.stringify(user));
-        }
-      } else if (event === 'SIGNED_OUT') {
-        set({ currentUser: null, isAuthenticated: false });
-        // Clear cached profile on logout
-        localStorage.removeItem('cached_user_profile');
-      }
-    });
-  },
-
-  login: async (email, password) => {
-    if (!isSupabaseConfigured()) {
-      return { success: false, error: 'Supabase not configured' };
-    }
-
-    // Check if offline
-    if (!navigator.onLine) {
-      return {
-        success: false,
-        error: 'Cannot login while offline. Please connect to the internet and try again. If you were previously logged in, the app will restore your session automatically.'
-      };
-    }
-
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-
-      if (data.user) {
-        const user = await mapSupabaseUser(data.user);
-        if (user) {
-          set({ currentUser: user, isAuthenticated: true });
-          // Cache user profile for offline use
-          localStorage.setItem('cached_user_profile', JSON.stringify(user));
-          return { success: true };
-        }
-      }
-
-      return { success: false, error: 'Failed to load user profile' };
-    } catch (error) {
-      return { success: false, error: 'Login failed' };
-    }
-  },
-
-  logout: async () => {
-    if (!isSupabaseConfigured()) return;
-
-    await supabase.auth.signOut();
-    set({ currentUser: null, isAuthenticated: false });
-  },
-
-  loadUsers: async () => {
-    if (!isSupabaseConfigured()) return;
-
-    const { data: profiles, error } = await supabase
+  try {
+    const { data: profile } = await supabase
       .from('profiles')
       .select('*')
-      .order('created_at');
+      .eq('id', supabaseUser.id)
+      .single();
 
-    if (error) {
-      console.error('Error loading users:', error);
-      return;
-    }
+    if (!profile) return null;
 
-    const users: User[] = profiles.map(profile => ({
-      id: profile.id,
+    return {
+      id: supabaseUser.id,
       username: profile.username,
       name: profile.display_name,
+      email: supabaseUser.email,
       role: profile.role as 'admin' | 'staff',
       createdAt: new Date(profile.created_at),
-    }));
+    };
+  } catch (error) {
+    console.error('Error mapping user:', error);
+    return null;
+  }
+}
 
-    set({ users });
-  },
+export const useAuth = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      currentUser: null,
+      isAuthenticated: false,
+      isLoading: true,
+      isOffline: !navigator.onLine,
+      users: [],
 
-  addUser: async ({ username, email, password, name, role }) => {
-    if (!isSupabaseConfigured()) {
-      return { success: false, error: 'Supabase not configured' };
-    }
+      setOffline: (offline) => set({ isOffline: offline }),
 
-    try {
-      // Create user with Supabase Auth
-      const { error } = await supabase.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          username,
-          display_name: name,
-          role,
-        },
-      });
+      initialize: async () => {
+        // Check online status
+        const isOffline = !navigator.onLine;
+        set({ isOffline });
 
-      if (error) {
-        // Fallback: try regular signup if admin API not available
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
+        // If we have a cached user and are offline, use it
+        const { currentUser } = get();
+        if (currentUser && isOffline) {
+          set({ isAuthenticated: true, isLoading: false });
+          return;
+        }
+
+        if (!isSupabaseConfigured()) {
+          set({ isLoading: false });
+          return;
+        }
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          
+          if (session?.user) {
+            const user = await mapSupabaseUser(session.user);
+            if (user) {
+              set({ currentUser: user, isAuthenticated: true });
+            }
+          }
+        } catch (error) {
+          console.error('Auth initialization error:', error);
+          // If offline and we have a cached user, still allow access
+          if (isOffline && currentUser) {
+            set({ isAuthenticated: true });
+          }
+        } finally {
+          set({ isLoading: false });
+        }
+
+        // Listen for auth changes
+        supabase.auth.onAuthStateChange(async (event, session) => {
+          if (event === 'SIGNED_IN' && session?.user) {
+            const user = await mapSupabaseUser(session.user);
+            if (user) {
+              set({ currentUser: user, isAuthenticated: true });
+            }
+          } else if (event === 'SIGNED_OUT') {
+            set({ currentUser: null, isAuthenticated: false });
+          }
+        });
+
+        // Listen for online/offline events
+        window.addEventListener('online', () => set({ isOffline: false }));
+        window.addEventListener('offline', () => set({ isOffline: true }));
+      },
+
+      login: async (email, password) => {
+        const { isOffline, currentUser } = get();
+
+        // If offline and we have a cached user with matching email, allow login
+        if (isOffline) {
+          if (currentUser?.email === email) {
+            set({ isAuthenticated: true });
+            return { success: true };
+          }
+          return { success: false, error: 'No internet connection. Please connect to log in for the first time.' };
+        }
+
+        if (!isSupabaseConfigured()) {
+          return { success: false, error: 'Authentication service not configured' };
+        }
+
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+
+          if (error) {
+            return { success: false, error: error.message };
+          }
+
+          if (data.user) {
+            const user = await mapSupabaseUser(data.user);
+            if (user) {
+              set({ currentUser: user, isAuthenticated: true });
+              return { success: true };
+            }
+          }
+
+          return { success: false, error: 'Failed to load user profile' };
+        } catch (error) {
+          return { success: false, error: 'Login failed. Please check your connection.' };
+        }
+      },
+
+      logout: async () => {
+        if (isSupabaseConfigured() && navigator.onLine) {
+          await supabase.auth.signOut();
+        }
+        set({ currentUser: null, isAuthenticated: false });
+      },
+
+      loadUsers: async () => {
+        if (!isSupabaseConfigured() || !navigator.onLine) return;
+
+        try {
+          const { data: profiles, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('created_at');
+
+          if (error) {
+            console.error('Error loading users:', error);
+            return;
+          }
+
+          const users: User[] = profiles.map(profile => ({
+            id: profile.id,
+            username: profile.username,
+            name: profile.display_name,
+            role: profile.role as 'admin' | 'staff',
+            createdAt: new Date(profile.created_at),
+          }));
+
+          set({ users });
+        } catch (error) {
+          console.error('Error loading users:', error);
+        }
+      },
+
+      addUser: async ({ username, email, password, name, role }) => {
+        if (!isSupabaseConfigured() || !navigator.onLine) {
+          return { success: false, error: 'Cannot add users while offline' };
+        }
+
+        try {
+          const { error } = await supabase.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+            user_metadata: {
               username,
               display_name: name,
               role,
             },
-          },
-        });
+          });
 
-        if (signUpError) {
-          return { success: false, error: signUpError.message };
+          if (error) {
+            // Fallback: try regular signup
+            const { error: signUpError } = await supabase.auth.signUp({
+              email,
+              password,
+              options: {
+                data: {
+                  username,
+                  display_name: name,
+                  role,
+                },
+              },
+            });
+
+            if (signUpError) {
+              return { success: false, error: signUpError.message };
+            }
+          }
+
+          await get().loadUsers();
+          return { success: true };
+        } catch (error) {
+          return { success: false, error: 'Failed to create user' };
+        }
+      },
+
+      updateUser: async (id, updates) => {
+        if (!isSupabaseConfigured() || !navigator.onLine) return false;
+
+        try {
+          const updateData: Record<string, string> = {};
+          if (updates.username) updateData.username = updates.username;
+          if (updates.name) updateData.display_name = updates.name;
+          if (updates.role) updateData.role = updates.role;
+
+          const { error } = await supabase
+            .from('profiles')
+            .update(updateData)
+            .eq('id', id);
+
+          if (error) {
+            console.error('Error updating user:', error);
+            return false;
+          }
+
+          const { users, currentUser } = get();
+          const updatedUsers = users.map(u => 
+            u.id === id ? { ...u, ...updates, name: updates.name || u.name } : u
+          );
+          
+          const updatedCurrentUser = currentUser?.id === id
+            ? { ...currentUser, ...updates, name: updates.name || currentUser.name }
+            : currentUser;
+
+          set({ users: updatedUsers, currentUser: updatedCurrentUser });
+          return true;
+        } catch (error) {
+          console.error('Error updating user:', error);
+          return false;
+        }
+      },
+
+      deleteUser: async (id) => {
+        if (!isSupabaseConfigured() || !navigator.onLine) return false;
+
+        const { users, currentUser } = get();
+
+        const user = users.find(u => u.id === id);
+        if (user?.role === 'admin') {
+          const adminCount = users.filter(u => u.role === 'admin').length;
+          if (adminCount <= 1) return false;
         }
 
-        // Reload users
-        await get().loadUsers();
-        return { success: true };
-      }
+        if (currentUser?.id === id) return false;
 
-      // Reload users
-      await get().loadUsers();
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: 'Failed to create user' };
+        try {
+          const { error } = await supabase.auth.admin.deleteUser(id);
+
+          if (error) {
+            await supabase.from('profiles').delete().eq('id', id);
+          }
+
+          set({ users: users.filter(u => u.id !== id) });
+          return true;
+        } catch (error) {
+          console.error('Error deleting user:', error);
+          return false;
+        }
+      },
+
+      factoryResetUsers: async () => {
+        await get().logout();
+      },
+    }),
+    {
+      name: 'cbd-intake-auth',
+      partialize: (state) => ({
+        currentUser: state.currentUser,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
-  },
-
-  updateUser: async (id, updates) => {
-    if (!isSupabaseConfigured()) return false;
-
-    const updateData: Record<string, string> = {};
-    if (updates.username) updateData.username = updates.username;
-    if (updates.name) updateData.display_name = updates.name;
-    if (updates.role) updateData.role = updates.role;
-
-    const { error } = await supabase
-      .from('profiles')
-      .update(updateData)
-      .eq('id', id);
-
-    if (error) {
-      console.error('Error updating user:', error);
-      return false;
-    }
-
-    // Update local state
-    const { users, currentUser } = get();
-    const updatedUsers = users.map(u => 
-      u.id === id ? { ...u, ...updates, name: updates.name || u.name } : u
-    );
-    
-    const updatedCurrentUser = currentUser?.id === id
-      ? { ...currentUser, ...updates, name: updates.name || currentUser.name }
-      : currentUser;
-
-    set({ users: updatedUsers, currentUser: updatedCurrentUser });
-    return true;
-  },
-
-  deleteUser: async (id) => {
-    if (!isSupabaseConfigured()) return false;
-
-    const { users, currentUser } = get();
-
-    // Prevent deleting last admin
-    const user = users.find(u => u.id === id);
-    if (user?.role === 'admin') {
-      const adminCount = users.filter(u => u.role === 'admin').length;
-      if (adminCount <= 1) return false;
-    }
-
-    // Prevent deleting self
-    if (currentUser?.id === id) return false;
-
-    // Delete from Supabase
-    const { error } = await supabase.auth.admin.deleteUser(id);
-
-    if (error) {
-      // If admin API not available, just delete profile
-      await supabase.from('profiles').delete().eq('id', id);
-    }
-
-    set({ users: users.filter(u => u.id !== id) });
-    return true;
-  },
-
-  factoryResetUsers: async () => {
-    // Note: This would require admin privileges to delete all users
-    // For now, just log out the current user
-    await get().logout();
-  },
-}));
+  )
+);

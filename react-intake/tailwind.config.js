@@ -28,9 +28,15 @@ export default {
           muted: 'var(--text-muted)',
         },
         success: '#21C354',
-        warning: '#FFBD45',
+        warning: {
+          DEFAULT: 'var(--warning)',
+          foreground: 'var(--warning-foreground)',
+        },
         error: '#FF4B4B',
-        info: '#00D4FF',
+        info: {
+          DEFAULT: 'var(--info)',
+          foreground: 'var(--info-foreground)',
+        },
       },
       fontFamily: {
         sans: ['Source Sans Pro', 'system-ui', 'sans-serif'],
