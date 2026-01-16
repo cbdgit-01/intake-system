@@ -95,18 +95,26 @@ function App() {
   // Show loading while checking auth
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 size={48} className="animate-spin text-primary mx-auto mb-4" />
-          <p className="text-text-secondary">Loading...</p>
+      <>
+        <UpdatePrompt />
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 size={48} className="animate-spin text-primary mx-auto mb-4" />
+            <p className="text-text-secondary">Loading...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   // Show login if not authenticated
   if (!isAuthenticated) {
-    return <LoginPage />;
+    return (
+      <>
+        <UpdatePrompt />
+        <LoginPage />
+      </>
+    );
   }
 
   const renderContent = () => {
