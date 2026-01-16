@@ -8,6 +8,7 @@ import IntakeFlow from './components/IntakeFlow';
 import FormPreview from './components/FormPreview';
 import LoginPage from './components/LoginPage';
 import UserManagement from './components/UserManagement';
+import UpdatePrompt from './components/UpdatePrompt';
 import { Loader2, WifiOff, RefreshCw } from 'lucide-react';
 import { 
   setupOnlineSync, 
@@ -125,6 +126,9 @@ function App() {
 
   return (
     <>
+      {/* Update prompt */}
+      <UpdatePrompt />
+
       {/* Offline/Sync status bar */}
       {(isOffline || unsyncedCount > 0) && (
         <div 
