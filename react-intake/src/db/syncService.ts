@@ -10,6 +10,8 @@ import {
   updateFormFromRemote,
   getUnsyncedCount as getLocalUnsyncedCount,
   SyncQueueItem,
+  incrementSyncItemRetry,
+  shouldRetryItem,
 } from './localDb';
 import { IntakeForm } from '../types';
 
@@ -24,7 +26,7 @@ export interface SyncStatus {
   lastError: string | null;
 }
 
-let syncInProgress = false;
+let syncPromise: Promise<{ success: number; failed: number }> | null = null;
 let syncCallbacks: SyncCallback[] = [];
 let realtimeSubscription: ReturnType<typeof supabase.channel> | null = null;
 let lastSyncTime: number | null = null;
@@ -55,7 +57,7 @@ async function getCurrentSyncStatus(): Promise<SyncStatus> {
   const pendingCount = await getLocalUnsyncedCount();
   return {
     isOnline: navigator.onLine,
-    isSyncing: syncInProgress,
+    isSyncing: syncPromise !== null,
     pendingCount,
     lastSyncTime,
     lastError,
@@ -99,6 +101,26 @@ export async function syncFromCloud(): Promise<number> {
 }
 
 /**
+ * Validate form data before syncing
+ */
+function validateForm(form: IntakeForm): { valid: boolean; error?: string } {
+  if (!form.id) return { valid: false, error: 'Missing form ID' };
+  if (!form.consignerType) return { valid: false, error: 'Missing consigner type' };
+
+  if (form.consignerType === 'new') {
+    if (!form.consignerName?.trim()) {
+      return { valid: false, error: 'New consigner requires name' };
+    }
+  } else if (form.consignerType === 'existing') {
+    if (!form.consignerNumber) {
+      return { valid: false, error: 'Existing consigner requires number' };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
  * Process a single sync queue item
  */
 async function processSyncItem(item: SyncQueueItem): Promise<boolean> {
@@ -106,45 +128,56 @@ async function processSyncItem(item: SyncQueueItem): Promise<boolean> {
 
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     switch (item.type) {
-      case 'CREATE': {
-        const form = item.payload as IntakeForm;
-        const { data, error } = await supabase
-          .from('forms')
-          .insert({
-            id: form.id,
-            consigner_type: form.consignerType,
-            consigner_name: form.consignerName || '',
-            consigner_number: form.consignerNumber || null,
-            consigner_address: form.consignerAddress || null,
-            consigner_phone: form.consignerPhone || null,
-            consigner_email: form.consignerEmail || null,
-            intake_mode: form.intakeMode || null,
-            status: form.status || 'draft',
-            items: JSON.parse(JSON.stringify(form.items)),
-            enabled_fields: form.enabledFields || null,
-            signature_data: form.signatureData || null,
-            initials_1: form.initials1 || null,
-            initials_2: form.initials2 || null,
-            initials_3: form.initials3 || null,
-            accepted_by: form.acceptedBy || null,
-            signed_at: form.signedAt ? form.signedAt.toISOString() : null,
-            created_by: user?.id || null,
-            signed_by: form.status === 'signed' ? user?.id : null,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        if (data) {
-          await markFormSynced(item.localId, data.id);
-        }
-        return true;
-      }
-
+      case 'CREATE':
       case 'UPDATE': {
         const form = item.payload as IntakeForm;
+
+        // VALIDATE before syncing
+        const validation = validateForm(form);
+        if (!validation.valid) {
+          console.error(`[Sync] Validation failed:`, validation.error);
+          if (item.id) await incrementSyncItemRetry(item.id, validation.error!);
+          return false;
+        }
+
+        // Handle CREATE
+        if (item.type === 'CREATE') {
+          const { data, error } = await supabase
+            .from('forms')
+            .insert({
+              id: form.id,
+              consigner_type: form.consignerType,
+              consigner_name: form.consignerName || '',
+              consigner_number: form.consignerNumber || null,
+              consigner_address: form.consignerAddress || null,
+              consigner_phone: form.consignerPhone || null,
+              consigner_email: form.consignerEmail || null,
+              intake_mode: form.intakeMode || null,
+              status: form.status || 'draft',
+              items: JSON.parse(JSON.stringify(form.items)),
+              enabled_fields: form.enabledFields || null,
+              signature_data: form.signatureData || null,
+              initials_1: form.initials1 || null,
+              initials_2: form.initials2 || null,
+              initials_3: form.initials3 || null,
+              accepted_by: form.acceptedBy || null,
+              signed_at: form.signedAt ? form.signedAt.toISOString() : null,
+              created_by: user?.id || null,
+              signed_by: form.status === 'signed' ? user?.id : null,
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+          if (data) {
+            await markFormSynced(item.localId, data.id);
+          }
+          return true;
+        }
+
+        // Handle UPDATE
         const { error } = await supabase
           .from('forms')
           .update({
@@ -188,50 +221,72 @@ async function processSyncItem(item: SyncQueueItem): Promise<boolean> {
         return true;
     }
   } catch (error) {
-    console.error('Sync item failed:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[Sync] Error processing item:', errorMsg);
+    if (item.id) await incrementSyncItemRetry(item.id, errorMsg);
     return false;
   }
 }
 
 /**
- * Process all pending sync items
+ * Process all pending sync items with retry logic and Promise-based locking
  */
 export async function processSyncQueue(): Promise<{ success: number; failed: number }> {
-  if (syncInProgress || !navigator.onLine || !isSupabaseConfigured()) {
+  // If sync already in progress, return existing promise
+  if (syncPromise) {
+    return syncPromise;
+  }
+
+  if (!navigator.onLine || !isSupabaseConfigured()) {
     return { success: 0, failed: 0 };
   }
 
-  syncInProgress = true;
-  let success = 0;
-  let failed = 0;
+  // Create new sync promise
+  syncPromise = (async () => {
+    let success = 0;
+    let failed = 0;
 
-  try {
-    const pendingItems = await getPendingSyncItems();
-    
-    for (const item of pendingItems) {
-      const result = await processSyncItem(item);
-      
-      if (result) {
-        await removeSyncQueueItem(item.id!);
-        success++;
-      } else {
-        failed++;
+    try {
+      const pendingItems = await getPendingSyncItems();
+
+      for (const item of pendingItems) {
+        // Check if item should be retried based on backoff
+        if (!(await shouldRetryItem(item))) {
+          if (item.retryCount >= 5) {
+            // Max retries exceeded - remove from queue
+            await removeSyncQueueItem(item.id!);
+            console.error(`[Sync] Removing failed item after max retries:`, item);
+          }
+          continue;
+        }
+
+        const result = await processSyncItem(item);
+
+        if (result) {
+          await removeSyncQueueItem(item.id!);
+          success++;
+        } else {
+          failed++;
+        }
       }
-    }
-  } catch (error) {
-    console.error('Sync queue processing error:', error);
-    lastError = error instanceof Error ? error.message : 'Sync failed';
-  } finally {
-    syncInProgress = false;
-    if (success > 0) {
-      lastSyncTime = Date.now();
-      lastError = null;
-      notifySyncCallbacks();
-    }
-    notifyStatusSubscribers();
-  }
+    } catch (error) {
+      console.error('Sync queue processing error:', error);
+      lastError = error instanceof Error ? error.message : 'Sync failed';
+    } finally {
+      syncPromise = null; // Release lock
 
-  return { success, failed };
+      if (success > 0) {
+        lastSyncTime = Date.now();
+        lastError = null;
+        notifySyncCallbacks();
+      }
+      notifyStatusSubscribers();
+    }
+
+    return { success, failed };
+  })();
+
+  return syncPromise;
 }
 
 /**

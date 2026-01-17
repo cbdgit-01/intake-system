@@ -40,6 +40,8 @@ export interface SyncQueueItem {
   payload: unknown;
   timestamp: number;
   retryCount: number;
+  lastAttemptTime?: number;  // Track last retry attempt
+  error?: string;            // Track last error message
 }
 
 const DB_NAME = 'cbd-intake-offline';
@@ -164,10 +166,23 @@ export async function clearAllFormsLocally(): Promise<void> {
 }
 
 /**
- * Add item to sync queue
+ * Add item to sync queue with deduplication
  */
 async function addToSyncQueue(item: Omit<SyncQueueItem, 'id'>): Promise<void> {
   const db = await getDb();
+
+  // Get existing queue items for this form
+  const existingItems = await db.getAllFromIndex('syncQueue', 'by-timestamp');
+  const duplicates = existingItems.filter(i =>
+    i.localId === item.localId && i.type === item.type
+  );
+
+  // Remove older duplicate entries
+  for (const dup of duplicates) {
+    if (dup.id) await db.delete('syncQueue', dup.id);
+  }
+
+  // Add new entry
   await db.add('syncQueue', item as SyncQueueItem);
 }
 
@@ -188,6 +203,48 @@ export async function removeSyncQueueItem(id: number): Promise<void> {
 }
 
 /**
+ * Increment retry count for a sync queue item
+ */
+export async function incrementSyncItemRetry(id: number, error: string): Promise<void> {
+  const db = await getDb();
+  const item = await db.get('syncQueue', id);
+
+  if (item) {
+    item.retryCount = (item.retryCount || 0) + 1;
+    item.lastAttemptTime = Date.now();
+    item.error = error;
+    await db.put('syncQueue', item);
+  }
+}
+
+/**
+ * Check if a sync item should be retried based on exponential backoff
+ */
+export async function shouldRetryItem(item: SyncQueueItem): Promise<boolean> {
+  const MAX_RETRIES = 5;
+  const BACKOFF_MS = [1000, 5000, 15000, 60000, 300000]; // 1s, 5s, 15s, 1m, 5m
+
+  // Exceeded max retries
+  if (item.retryCount >= MAX_RETRIES) {
+    console.error(`[Sync] Max retries exceeded for item ${item.id}:`, item.error);
+    return false;
+  }
+
+  // Check backoff timing
+  if (item.lastAttemptTime) {
+    const backoffTime = BACKOFF_MS[item.retryCount] || BACKOFF_MS[BACKOFF_MS.length - 1];
+    const timeSinceLastAttempt = Date.now() - item.lastAttemptTime;
+
+    if (timeSinceLastAttempt < backoffTime) {
+      // Too soon to retry
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Mark form as synced
  */
 export async function markFormSynced(localId: string, remoteId: string): Promise<void> {
@@ -203,15 +260,27 @@ export async function markFormSynced(localId: string, remoteId: string): Promise
 }
 
 /**
- * Update form from remote (when receiving realtime updates)
+ * Update form from remote (when receiving realtime updates) with conflict detection
  */
 export async function updateFormFromRemote(remoteForm: IntakeForm & { id: string }): Promise<void> {
   const db = await getDb();
-  
+
   // Find existing by remoteId or localId
   const allForms = await db.getAll('forms');
   const existing = allForms.find(f => f.remoteId === remoteForm.id || f.localId === remoteForm.id);
-  
+
+  // CONFLICT DETECTION: Compare timestamps if local form has unsynced changes
+  if (existing && !existing.synced) {
+    const localTime = existing.localUpdatedAt || 0;
+    const remoteTime = new Date(remoteForm.updatedAt).getTime();
+
+    if (localTime > remoteTime) {
+      console.log(`[Conflict] Local version newer for ${remoteForm.id}, keeping local`);
+      // Don't overwrite - local will sync up later
+      return;
+    }
+  }
+
   const localForm: LocalForm = {
     ...remoteForm,
     localId: existing?.localId || remoteForm.id,
