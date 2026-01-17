@@ -124,8 +124,8 @@ const UpdatePrompt = () => {
           <button
             onClick={handleUpdate}
             style={{
-              background: 'var(--text-primary)',
-              color: 'var(--bg-primary)',
+              background: 'var(--primary)',
+              color: '#FFFFFF',
               border: 'none',
               borderRadius: 'var(--radius-md, 6px)',
               padding: '10px 20px',
@@ -135,11 +135,11 @@ const UpdatePrompt = () => {
               transition: 'all 0.2s'
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.opacity = '0.9';
+              e.currentTarget.style.background = 'var(--primary-hover)';
               e.currentTarget.style.transform = 'scale(1.02)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.opacity = '1';
+              e.currentTarget.style.background = 'var(--primary)';
               e.currentTarget.style.transform = 'scale(1)';
             }}
             onMouseDown={(e) => {
