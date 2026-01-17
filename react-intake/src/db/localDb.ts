@@ -298,7 +298,9 @@ export async function updateFormFromRemote(remoteForm: IntakeForm & { id: string
  */
 export async function getUnsyncedCount(): Promise<number> {
   const db = await getDb();
-  const unsynced = await db.getAllFromIndex('forms', 'by-sync-status', IDBKeyRange.only(false));
+  // Get all forms and filter for unsynced instead of using IDBKeyRange with boolean
+  const allForms = await db.getAll('forms');
+  const unsynced = allForms.filter(form => !form.synced);
   return unsynced.length;
 }
 
