@@ -1,6 +1,7 @@
 """
 YOLO Object Detection API for CBD Intake
-This backend service handles image processing and object detection.
+This backend service handles image processing and object detection,
+and email sending via Resend API.
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -8,11 +9,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from ultralytics import YOLO
 from PIL import Image
+from pydantic import BaseModel
 import numpy as np
 import io
 import base64
 from typing import List, Optional
 import logging
+import resend
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -158,6 +161,72 @@ async def detect_items(
     except Exception as e:
         logger.error(f"Detection error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ============ Email API ============
+
+class EmailAttachment(BaseModel):
+    filename: str
+    content: str  # Base64 encoded content
+
+class EmailRequest(BaseModel):
+    to_email: str
+    to_name: Optional[str] = None
+    from_email: str
+    from_name: Optional[str] = "Consigned By Design"
+    subject: str
+    message: str
+    attachments: Optional[List[EmailAttachment]] = None
+    api_key: str
+
+@app.post("/send-email")
+async def send_email(request: EmailRequest):
+    """
+    Send an email via Resend API.
+    Supports attachments (base64 encoded).
+    """
+    try:
+        # Set API key from request
+        resend.api_key = request.api_key
+
+        # Build email params
+        email_params = {
+            "from": f"{request.from_name} <{request.from_email}>",
+            "to": [request.to_email],
+            "subject": request.subject,
+            "text": request.message,
+            "html": f"<div style='font-family: Arial, sans-serif; line-height: 1.6;'>{request.message.replace(chr(10), '<br>')}</div>",
+        }
+
+        # Add attachments if provided
+        if request.attachments:
+            email_params["attachments"] = [
+                {
+                    "filename": att.filename,
+                    "content": att.content,
+                }
+                for att in request.attachments
+            ]
+
+        # Send email
+        result = resend.Emails.send(email_params)
+
+        logger.info(f"Email sent successfully to {request.to_email}, id: {result.get('id', 'unknown')}")
+
+        return JSONResponse({
+            "success": True,
+            "message": "Email sent successfully",
+            "id": result.get("id")
+        })
+
+    except Exception as e:
+        logger.error(f"Email error: {str(e)}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": str(e)
+            }
+        )
 
 if __name__ == "__main__":
     import uvicorn
