@@ -15,7 +15,7 @@ import io
 import base64
 from typing import List, Optional
 import logging
-import resend
+import requests
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -162,7 +162,9 @@ async def detect_items(
         logger.error(f"Detection error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ============ Email API ============
+# ============ Email API (Brevo) ============
+
+BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 class EmailAttachment(BaseModel):
     filename: str
@@ -181,42 +183,65 @@ class EmailRequest(BaseModel):
 @app.post("/send-email")
 async def send_email(request: EmailRequest):
     """
-    Send an email via Resend API.
+    Send an email via Brevo API.
     Supports attachments (base64 encoded).
     """
     try:
-        # Set API key from request
-        resend.api_key = request.api_key
+        headers = {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "api-key": request.api_key,
+        }
 
-        # Build email params
-        email_params = {
-            "from": f"{request.from_name} <{request.from_email}>",
-            "to": [request.to_email],
+        # Build email payload for Brevo
+        payload = {
+            "sender": {
+                "name": request.from_name,
+                "email": request.from_email,
+            },
+            "to": [
+                {
+                    "email": request.to_email,
+                    "name": request.to_name or request.to_email,
+                }
+            ],
             "subject": request.subject,
-            "text": request.message,
-            "html": f"<div style='font-family: Arial, sans-serif; line-height: 1.6;'>{request.message.replace(chr(10), '<br>')}</div>",
+            "textContent": request.message,
+            "htmlContent": f"<div style='font-family: Arial, sans-serif; line-height: 1.6;'>{request.message.replace(chr(10), '<br>')}</div>",
         }
 
         # Add attachments if provided
         if request.attachments:
-            email_params["attachments"] = [
+            payload["attachment"] = [
                 {
-                    "filename": att.filename,
+                    "name": att.filename,
                     "content": att.content,
                 }
                 for att in request.attachments
             ]
 
-        # Send email
-        result = resend.Emails.send(email_params)
+        # Send email via Brevo API
+        response = requests.post(BREVO_API_URL, json=payload, headers=headers)
 
-        logger.info(f"Email sent successfully to {request.to_email}, id: {result.get('id', 'unknown')}")
-
-        return JSONResponse({
-            "success": True,
-            "message": "Email sent successfully",
-            "id": result.get("id")
-        })
+        if response.status_code in [200, 201]:
+            result = response.json()
+            logger.info(f"Email sent successfully to {request.to_email}, messageId: {result.get('messageId', 'unknown')}")
+            return JSONResponse({
+                "success": True,
+                "message": "Email sent successfully",
+                "id": result.get("messageId")
+            })
+        else:
+            error_data = response.json() if response.text else {}
+            error_msg = error_data.get("message", f"HTTP {response.status_code}")
+            logger.error(f"Brevo API error: {error_msg}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "error": error_msg
+                }
+            )
 
     except Exception as e:
         logger.error(f"Email error: {str(e)}")

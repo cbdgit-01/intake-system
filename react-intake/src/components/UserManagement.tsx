@@ -13,7 +13,7 @@ export default function UserManagement() {
   const [showAddUser, setShowAddUser] = useState(false);
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'users' | 'data'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'data' | 'email'>('users');
   const [allForms, setAllForms] = useState<IntakeForm[]>([]);
   const [successMessage, setSuccessMessage] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -142,12 +142,12 @@ export default function UserManagement() {
       <h2 className="text-xl font-semibold mb-6">Admin Settings</h2>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-6 flex-wrap">
         <button
           onClick={() => setActiveTab('users')}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'users' 
-              ? 'bg-primary text-white' 
+            activeTab === 'users'
+              ? 'bg-primary text-white'
               : 'st-button'
           }`}
         >
@@ -157,13 +157,24 @@ export default function UserManagement() {
         <button
           onClick={() => setActiveTab('data')}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'data' 
-              ? 'bg-primary text-white' 
+            activeTab === 'data'
+              ? 'bg-primary text-white'
               : 'st-button'
           }`}
         >
           <Database size={18} className="inline mr-2" />
           Data Management
+        </button>
+        <button
+          onClick={() => setActiveTab('email')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'email'
+              ? 'bg-primary text-white'
+              : 'st-button'
+          }`}
+        >
+          <Mail size={18} className="inline mr-2" />
+          Email Settings
         </button>
       </div>
 
@@ -533,6 +544,205 @@ export default function UserManagement() {
             )}
           </div>
         </>
+      )}
+
+      {/* Email Settings Tab */}
+      {activeTab === 'email' && (
+        <EmailSettingsAdmin />
+      )}
+    </div>
+  );
+}
+
+// Inline Email Settings for Admin
+function EmailSettingsAdmin() {
+  const [apiKey, setApiKey] = useState('');
+  const [fromEmail, setFromEmail] = useState('');
+  const [fromName, setFromName] = useState('Consigned By Design');
+  const [isConfigured, setIsConfigured] = useState(false);
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [testError, setTestError] = useState('');
+  const [testEmail, setTestEmail] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
+
+  useEffect(() => {
+    // Load existing config
+    const stored = localStorage.getItem('cbd-intake-email-config');
+    if (stored) {
+      try {
+        const config = JSON.parse(stored);
+        setApiKey(config.apiKey || '');
+        setFromEmail(config.fromEmail || '');
+        setFromName(config.fromName || 'Consigned By Design');
+        setIsConfigured(!!(config.apiKey && config.fromEmail));
+      } catch (e) {
+        console.error('Error loading email config:', e);
+      }
+    }
+  }, []);
+
+  const handleSave = () => {
+    localStorage.setItem('cbd-intake-email-config', JSON.stringify({
+      apiKey: apiKey.trim(),
+      fromEmail: fromEmail.trim(),
+      fromName: fromName.trim(),
+    }));
+    setIsConfigured(true);
+    setSaveMessage('Email settings saved!');
+    setTimeout(() => setSaveMessage(''), 3000);
+  };
+
+  const handleClear = () => {
+    if (confirm('Remove email configuration?')) {
+      localStorage.removeItem('cbd-intake-email-config');
+      setApiKey('');
+      setFromEmail('');
+      setFromName('Consigned By Design');
+      setIsConfigured(false);
+      setTestStatus('idle');
+    }
+  };
+
+  const handleTestEmail = async () => {
+    if (!testEmail) {
+      setTestError('Enter an email to send test to');
+      setTestStatus('error');
+      return;
+    }
+
+    handleSave(); // Save first
+    setTestStatus('sending');
+    setTestError('');
+
+    try {
+      const API_URL = import.meta.env.VITE_DETECTION_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${API_URL}/send-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to_email: testEmail,
+          to_name: 'Test User',
+          from_email: fromEmail,
+          from_name: fromName,
+          subject: 'Test Email from CBD Intake',
+          message: 'This is a test email. If you received this, email is configured correctly!',
+          api_key: apiKey,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setTestStatus('success');
+      } else {
+        setTestStatus('error');
+        setTestError(data.error || 'Failed to send');
+      }
+    } catch (e) {
+      setTestStatus('error');
+      setTestError(e instanceof Error ? e.message : 'Network error');
+    }
+  };
+
+  return (
+    <div>
+      <h3 className="text-lg font-medium mb-4">Email Configuration (Brevo)</h3>
+      <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
+        Configure email sending for intake receipts. Emails will include the intake form as a PDF attachment.
+      </p>
+
+      {/* Setup Instructions */}
+      <div className="st-card mb-6">
+        <p className="font-medium mb-2">Setup:</p>
+        <ol className="list-decimal list-inside space-y-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <li>Create account at <a href="https://www.brevo.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">brevo.com</a></li>
+          <li>Go to SMTP & API → API Keys</li>
+          <li>Create a new API key and paste below</li>
+        </ol>
+        <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+          Free tier: 300 emails/day (no domain verification required)
+        </p>
+      </div>
+
+      {/* Config Form */}
+      <div className="space-y-4 mb-6">
+        <div>
+          <label className="st-label">API Key *</label>
+          <input
+            type="password"
+            className="st-input"
+            placeholder="xkeysib-xxxxxxxxx..."
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="st-label">From Email *</label>
+          <input
+            type="email"
+            className="st-input"
+            placeholder="noreply@yourdomain.com"
+            value={fromEmail}
+            onChange={(e) => setFromEmail(e.target.value)}
+          />
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+            Use your Brevo account email or any verified sender
+          </p>
+        </div>
+        <div>
+          <label className="st-label">From Name</label>
+          <input
+            type="text"
+            className="st-input"
+            placeholder="Consigned By Design"
+            value={fromName}
+            onChange={(e) => setFromName(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Status Messages */}
+      {saveMessage && <div className="st-success mb-4">{saveMessage}</div>}
+      {isConfigured && !saveMessage && <div className="st-success mb-4">Email is configured</div>}
+      {testStatus === 'success' && <div className="st-success mb-4">Test email sent!</div>}
+      {testStatus === 'error' && <div className="st-error mb-4">{testError}</div>}
+
+      {/* Actions */}
+      <div className="flex gap-3 mb-6">
+        <button
+          onClick={handleSave}
+          disabled={!apiKey.trim() || !fromEmail.trim()}
+          className="st-button-primary"
+        >
+          Save Configuration
+        </button>
+        {isConfigured && (
+          <button onClick={handleClear} className="st-button text-error">
+            Remove
+          </button>
+        )}
+      </div>
+
+      {/* Test Section */}
+      {apiKey && fromEmail && (
+        <div className="st-card">
+          <p className="font-medium mb-3">Send Test Email</p>
+          <div className="flex gap-3">
+            <input
+              type="email"
+              className="st-input flex-1"
+              placeholder="test@example.com"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+            />
+            <button
+              onClick={handleTestEmail}
+              disabled={testStatus === 'sending' || !testEmail}
+              className="st-button"
+            >
+              {testStatus === 'sending' ? 'Sending...' : 'Send Test'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
