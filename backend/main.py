@@ -43,7 +43,7 @@ RAILWAY_PATTERN_ORIGINS = []
 app.add_middleware(
     CORSMiddleware,
     allow_origins=DEFAULT_ORIGINS + CORS_ORIGINS,
-    allow_origin_regex=r"https://.*\.(up\.railway\.app|netlify\.app|onrender\.com)",  # Allow Railway, Netlify, Render
+    allow_origin_regex=r"https://.*\.(up\.railway\.app|netlify\.app|onrender\.com|ngrok-free\.app|ngrok\.io)",  # Allow Railway, Netlify, Render, ngrok
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
