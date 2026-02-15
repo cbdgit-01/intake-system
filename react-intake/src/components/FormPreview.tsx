@@ -1,14 +1,17 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
-import { ArrowLeft, Download, Printer, CheckCircle, Home, FileText, ImageIcon, X } from 'lucide-react';
+import { ArrowLeft, Download, Printer, CheckCircle, Home, FileText, ImageIcon, X, Mail, Send, Edit, Loader2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useAuth } from '../store/useAuth';
+import { isEmailConfigured, sendEmailWithPDF } from '../lib/emailService';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 export default function FormPreview() {
-  const { 
-    currentForm, 
-    items, 
+  const {
+    currentForm,
+    items,
     enabledFields,
     isViewOnly,
     signatureData,
@@ -20,21 +23,28 @@ export default function FormPreview() {
     setSignatureDate,
     setAcceptedBy,
     completeIntake,
-    saveCurrentForm,
     setIntakeStep,
     setView,
     resetAll,
     documentOnlyPreview,
     setDocumentOnlyPreview,
+    setViewOnly,
   } = useStore();
 
   const { currentUser } = useAuth();
   const navigate = useNavigate();
 
   const signatureRef = useRef<SignatureCanvas>(null);
+  const documentRef = useRef<HTMLDivElement>(null);
   const [showBalloons, setShowBalloons] = useState(false);
   const [formSigned, setFormSigned] = useState(currentForm?.status === 'signed');
   const [expandedPhotos, setExpandedPhotos] = useState<number | null>(null);
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [emailAddress, setEmailAddress] = useState(currentForm?.consignerEmail || '');
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Check if form can be completed
   const canComplete = () => {
@@ -103,9 +113,80 @@ export default function FormPreview() {
     setView('dashboard');
   };
 
-  const handleSaveChanges = async () => {
-    await saveCurrentForm();
-    setView('dashboard');
+  // Generate PDF and return as base64 string
+  const generatePDFBase64 = async (): Promise<string | null> => {
+    if (!documentRef.current) return null;
+
+    try {
+      const canvas = await html2canvas(documentRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'letter',
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      const imgY = 10;
+
+      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+
+      // Return as base64 data URL
+      return pdf.output('datauristring');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      return null;
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!documentRef.current) return;
+
+    setIsDownloading(true);
+    try {
+      const canvas = await html2canvas(documentRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'letter',
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      const imgY = 10;
+
+      pdf.addImage(imgData, 'PNG', imgX, imgY, imgWidth * ratio, imgHeight * ratio);
+
+      const fileName = `intake-${currentForm?.consignerName?.replace(/\s+/g, '-') || 'form'}-${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try printing instead.');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   // Filter accepted items
@@ -149,25 +230,40 @@ export default function FormPreview() {
         <h2 className="text-xl font-semibold">
           {documentOnlyPreview ? 'Document Preview' : 'Intake Agreement Preview'}
         </h2>
-        <button onClick={handleBack} className="st-button">
-          {documentOnlyPreview ? (
-            <>
-              <X size={18} className="inline mr-2" />
-              Close
-            </>
-          ) : (
-            <>
-              <ArrowLeft size={18} className="inline mr-2" />
-              {formSigned ? 'Close' : 'Back to Item Entry'}
-            </>
+        <div className="flex gap-2">
+          {/* Edit button - show when viewing a form (not in document-only mode) */}
+          {!documentOnlyPreview && isViewOnly && (
+            <button
+              onClick={() => {
+                setViewOnly(false);
+                setIntakeStep('item-entry');
+              }}
+              className="st-button"
+            >
+              <Edit size={18} className="inline mr-2" />
+              Edit Form
+            </button>
           )}
-        </button>
+          <button onClick={handleBack} className="st-button">
+            {documentOnlyPreview ? (
+              <>
+                <X size={18} className="inline mr-2" />
+                Close
+              </>
+            ) : (
+              <>
+                <ArrowLeft size={18} className="inline mr-2" />
+                {formSigned ? 'Close' : 'Back to Item Entry'}
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="st-divider" />
 
-      {/* PDF-like Preview */}
-      <div className="bg-white text-gray-900 rounded-lg p-6 mb-6 shadow-lg">
+      {/* PDF-like Preview - this is the printable document */}
+      <div ref={documentRef} className="printable-document bg-white text-gray-900 rounded-lg p-6 mb-6 shadow-lg">
         {/* Header */}
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-gray-800">Consigned By Design</h1>
@@ -440,63 +536,229 @@ export default function FormPreview() {
         </div>
       )}
 
-      {/* View-only signature display - hidden in document-only mode */}
-      {!documentOnlyPreview && (isViewOnly || formSigned) && signatureData && (
+      {/* View-only signature display - show when viewing (not editing) a signed form */}
+      {!documentOnlyPreview && isViewOnly && signatureData && (
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-4">Signature on File</h3>
-          
+
           <div className="space-y-3">
             <p><strong>Staff Acceptance:</strong> {acceptedBy}</p>
-            
+
             <div className="flex gap-8">
               <p><strong>Statement 1:</strong> {initials.init1}</p>
               <p><strong>Statement 2:</strong> {initials.init2}</p>
               <p><strong>Statement 3:</strong> {initials.init3}</p>
             </div>
-            
+
             <p><strong>Date:</strong> {signatureDate}</p>
-            
+
             <div>
               <p className="font-medium mb-2">Consigner Signature:</p>
               <img src={signatureData} alt="Signature" className="h-20 border border-surface-border rounded-lg p-2 bg-white" />
             </div>
           </div>
+        </div>
+      )}
 
-          <div className="st-divider" />
-          
-          <div className="st-info">
-            This agreement has been signed and cannot be modified.
+      {/* Download/Print/Email buttons - hidden in document-only mode */}
+      {!documentOnlyPreview && (
+        <div className="space-y-4 mb-6">
+          <div className="flex gap-3">
+            <button
+              onClick={handleDownloadPDF}
+              disabled={isDownloading}
+              className="flex-1 st-button"
+            >
+              {isDownloading ? (
+                <>
+                  <Loader2 size={18} className="inline mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Download size={18} className="inline mr-2" />
+                  Download PDF
+                </>
+              )}
+            </button>
+            <button onClick={() => window.print()} className="flex-1 st-button">
+              <Printer size={18} className="inline mr-2" />
+              Print Form
+            </button>
+          </div>
+
+          {/* Email Receipt Section */}
+          <div className="st-card">
+            <button
+              onClick={() => setShowEmailForm(!showEmailForm)}
+              className="w-full flex items-center justify-between"
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <Mail size={18} />
+                Email Receipt to Customer
+                {isEmailConfigured() && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-success/20 text-success">
+                    Direct Send
+                  </span>
+                )}
+              </span>
+              <span className="text-text-secondary">{showEmailForm ? '▼' : '▶'}</span>
+            </button>
+
+            {showEmailForm && (
+              <div className="mt-4 pt-4 border-t border-surface-border">
+                {emailSent ? (
+                  <div className="st-success">
+                    <CheckCircle size={18} className="inline mr-2" />
+                    {isEmailConfigured()
+                      ? `Email sent successfully to ${emailAddress}!`
+                      : `Email client opened for ${emailAddress}`
+                    }
+                  </div>
+                ) : (
+                  <>
+                    <label className="st-label">Customer Email Address</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        className="st-input flex-1"
+                        placeholder="customer@email.com"
+                        value={emailAddress}
+                        onChange={(e) => {
+                          setEmailAddress(e.target.value);
+                          setEmailError('');
+                        }}
+                      />
+                      <button
+                        onClick={async () => {
+                          if (!emailAddress.trim() || !emailAddress.includes('@')) {
+                            setEmailError('Please enter a valid email address');
+                            return;
+                          }
+
+                          // Build email content
+                          const itemsList = acceptedItems
+                            .map((item, idx) => `${idx + 1}. ${item.name || 'Unnamed item'}${item.notes ? ` - ${item.notes}` : ''}`)
+                            .join('\n');
+
+                          const subject = `Consigned By Design - Intake Receipt for ${currentForm?.consignerName || 'Customer'}`;
+                          const body = `Dear ${currentForm?.consignerName || 'Valued Customer'},
+
+Thank you for consigning with Consigned By Design!
+
+This email confirms your intake agreement dated ${signatureDate || new Date().toLocaleDateString()}.
+
+CONSIGNER INFORMATION:
+- Name: ${currentForm?.consignerName || 'N/A'}
+${currentForm?.consignerNumber ? `- Consigner #: ${currentForm.consignerNumber}` : ''}
+${currentForm?.consignerAddress ? `- Address: ${currentForm.consignerAddress.replace(/\n/g, ', ')}` : ''}
+${currentForm?.consignerPhone ? `- Phone: ${currentForm.consignerPhone}` : ''}
+
+ITEMS CONSIGNED (${acceptedItems.length} items):
+${itemsList}
+
+Total Items: ${acceptedItems.length}
+${enabledFields.quantity ? `Total Quantity: ${totalQuantity}` : ''}
+${enabledFields.price ? `Total Estimated Value: $${totalPrice.toFixed(2)}` : ''}
+
+ACCEPTED BY: ${acceptedBy || 'Staff'}
+
+If you have any questions, please contact us at:
+Consigned By Design
+7035 East 96th Street, Suite A
+Indianapolis, Indiana 46250
+
+Thank you for choosing Consigned By Design!`;
+
+                          // Check if Resend is configured
+                          if (isEmailConfigured()) {
+                            // Send directly via Resend with PDF attachment
+                            setEmailSending(true);
+                            setEmailError('');
+
+                            // Generate PDF for attachment
+                            const pdfBase64 = await generatePDFBase64();
+                            const pdfFilename = `intake-${currentForm?.consignerName?.replace(/\s+/g, '-') || 'form'}-${new Date().toISOString().split('T')[0]}.pdf`;
+
+                            if (!pdfBase64) {
+                              setEmailSending(false);
+                              setEmailError('Failed to generate PDF attachment');
+                              return;
+                            }
+
+                            const result = await sendEmailWithPDF(
+                              {
+                                to_email: emailAddress,
+                                to_name: currentForm?.consignerName || 'Valued Customer',
+                                from_name: 'Consigned By Design',
+                                subject: subject,
+                                message: body,
+                              },
+                              pdfBase64,
+                              pdfFilename
+                            );
+
+                            setEmailSending(false);
+
+                            if (result.success) {
+                              setEmailSent(true);
+                            } else {
+                              setEmailError(result.error || 'Failed to send email');
+                            }
+                          } else {
+                            // Fallback to mailto
+                            const mailtoUrl = `mailto:${emailAddress}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                            window.open(mailtoUrl, '_blank');
+                            setEmailSent(true);
+                          }
+                        }}
+                        disabled={!emailAddress.trim() || emailSending}
+                        className="st-button-primary"
+                      >
+                        {emailSending ? (
+                          <>
+                            <Loader2 size={18} className="inline mr-2 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <Send size={18} className="inline mr-2" />
+                            {isEmailConfigured() ? 'Send Email' : 'Open Email'}
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {emailError && (
+                      <p className="text-sm text-error mt-2">{emailError}</p>
+                    )}
+
+                    <p className="st-caption mt-2">
+                      {isEmailConfigured()
+                        ? 'Email will be sent with the intake form attached as a PDF.'
+                        : 'Opens your email client with a pre-filled receipt.'}
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Download/Print buttons - hidden in document-only mode */}
-      {!documentOnlyPreview && (
-        <div className="flex gap-3 mb-6">
-          <button className="flex-1 st-button">
-            <Download size={18} className="inline mr-2" />
-            Download PDF
-          </button>
-          <button onClick={() => window.print()} className="flex-1 st-button">
-            <Printer size={18} className="inline mr-2" />
-            Print Form
-          </button>
-        </div>
-      )}
-
-      {/* Success actions (after signing) - hidden in document-only mode */}
-      {!documentOnlyPreview && formSigned && (
+      {/* Success actions (after signing in this session) - hidden in document-only mode */}
+      {!documentOnlyPreview && formSigned && !isViewOnly && (
         <div className="space-y-3">
           <div className="st-success">
             <CheckCircle size={20} className="inline mr-2" />
             Intake Agreement signed and saved!
           </div>
-          
+
           <button onClick={handleNewIntake} className="w-full st-button-primary">
             <FileText size={18} className="inline mr-2" />
             Start New Intake
           </button>
-          
+
           <button onClick={handleReturnToDashboard} className="w-full st-button">
             <Home size={18} className="inline mr-2" />
             Return to Dashboard
@@ -504,11 +766,14 @@ export default function FormPreview() {
         </div>
       )}
 
-      {/* Edit mode save - hidden in document-only mode */}
-      {!documentOnlyPreview && !formSigned && isViewOnly && (
-        <button onClick={handleSaveChanges} className="w-full st-button-primary">
-          Save Changes
-        </button>
+      {/* View-only actions - for viewing signed forms */}
+      {!documentOnlyPreview && isViewOnly && (
+        <div className="space-y-3">
+          <button onClick={handleReturnToDashboard} className="w-full st-button">
+            <Home size={18} className="inline mr-2" />
+            Return to Dashboard
+          </button>
+        </div>
       )}
     </div>
   );

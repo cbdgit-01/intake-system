@@ -7,16 +7,15 @@ import FieldConfiguration from '../FieldConfiguration';
 import { createEmptyItem } from '../../types';
 
 export default function EmailMode() {
-  const { 
-    currentForm, 
-    items, 
+  const {
+    currentForm,
+    items,
     addItem,
     removeItem,
     setIntakeStep,
     isViewOnly,
     isEditingExisting,
     setView,
-    resetAll,
     addingPhotoForItem,
     setAddingPhotoForItem,
     saveCurrentForm,
@@ -57,7 +56,7 @@ export default function EmailMode() {
 
   const handleBack = () => {
     if (isEditingExisting) {
-      resetAll();
+      // Just go back to dashboard, don't reset the form data
       setView('dashboard');
     } else if (emailImportStep === 'edit') {
       setEmailImportStep('queue');

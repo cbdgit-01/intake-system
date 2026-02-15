@@ -26,13 +26,14 @@ export default function Dashboard() {
   }, [formsVersion]);
 
   const loadAllData = async () => {
-    // Pull latest data from cloud first (to see changes from other devices)
-    if (navigator.onLine) {
-      await syncFromCloud();
-    }
-    // Then load from local database
+    // Load from local database FIRST for instant display
     const forms = await getAllForms();
     setAllForms(forms);
+
+    // Then sync from cloud in background (will trigger formsVersion update when done)
+    if (navigator.onLine) {
+      syncFromCloud().catch(console.error);
+    }
   };
 
   // Search forms directly by consigner name or number
@@ -318,7 +319,13 @@ interface FormCardProps {
 
 function FormCard({ form, onView, onEdit, onDelete }: FormCardProps) {
   const isSigned = form.status === 'signed';
-  const modeLabel = (form.intakeMode || '').charAt(0).toUpperCase() + (form.intakeMode || '').slice(1);
+  const modeLabels: Record<string, string> = {
+    detection: 'Item Detection',
+    general: 'Manual Entry',
+    email: 'Email Import',
+    prepopulate: 'Pre-populate',
+  };
+  const modeLabel = modeLabels[form.intakeMode || ''] || form.intakeMode || 'Unknown';
   const dateStr = form.updatedAt ? new Date(form.updatedAt).toLocaleDateString() : '';
 
   return (
@@ -348,18 +355,17 @@ function FormCard({ form, onView, onEdit, onDelete }: FormCardProps) {
             <Eye size={16} className="inline mr-1" />
             View
           </button>
-          
+
+          <button onClick={onEdit} className="st-button text-sm">
+            <Edit size={16} className="inline mr-1" />
+            Edit
+          </button>
+
           {!isSigned && (
-            <>
-              <button onClick={onEdit} className="st-button text-sm">
-                <Edit size={16} className="inline mr-1" />
-                Edit
-              </button>
-              <button onClick={onDelete} className="st-button text-sm text-error">
-                <Trash2 size={16} className="inline mr-1" />
-                Delete
-              </button>
-            </>
+            <button onClick={onDelete} className="st-button text-sm text-error">
+              <Trash2 size={16} className="inline mr-1" />
+              Delete
+            </button>
           )}
         </div>
       </div>

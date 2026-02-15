@@ -1,0 +1,12 @@
+node_modules
+react-intake/node_modules
+react-intake/dist
+.git
+.gitignore
+*.md
+.env
+.env.*
+__pycache__
+*.pyc
+.vscode
+.idea

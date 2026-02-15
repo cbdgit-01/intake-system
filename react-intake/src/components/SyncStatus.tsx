@@ -17,9 +17,13 @@ export default function SyncStatus() {
     return unsubscribe;
   }, []);
 
-  const handleManualSync = () => {
-    // Perform full bidirectional sync (push + pull)
-    syncFull();
+  const handleManualSync = async () => {
+    try {
+      // Perform full bidirectional sync (push + pull)
+      await syncFull();
+    } catch (error) {
+      console.error('[SyncStatus] Manual sync failed:', error);
+    }
   };
 
   // Format last sync time

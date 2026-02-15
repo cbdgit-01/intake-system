@@ -31,51 +31,72 @@ export default function ItemCard({ item, index }: ItemCardProps) {
 
     switch (config.type) {
       case 'text':
-        // Special handling for dimensions - show 3 boxes
+        // Special handling for dimensions - show 4 boxes (W, D, H, SH)
         if (fieldId === 'dimensions') {
           const dimValue = (value as string) || '';
-          const parts = dimValue.split(' x ').map(p => p.replace(/"/g, '').trim());
-          const [length = '', width = '', height = ''] = parts;
-          
-          const updateDimensions = (l: string, w: string, h: string) => {
-            const formatted = [l, w, h].filter(Boolean).join('" x ') + (l || w || h ? '"' : '');
-            handleFieldChange('dimensions', formatted || '');
+          // Parse dimensions - format: W x D x H (SH) or similar
+          const shMatch = dimValue.match(/\(SH:?\s*([^)]*)\)/i);
+          const seatHeight = shMatch ? shMatch[1].replace(/"/g, '').trim() : '';
+          const mainPart = dimValue.replace(/\s*\(SH:?[^)]*\)/i, '');
+          const parts = mainPart.split(/\s*x\s*/i).map(p => p.replace(/"/g, '').trim());
+          const [width = '', depth = '', height = ''] = parts;
+
+          const updateDimensions = (w: string, d: string, h: string, sh: string) => {
+            const mainDims = [w, d, h].filter(Boolean).join('" x ');
+            const shPart = sh ? ` (SH: ${sh}")` : '';
+            const formatted = mainDims ? mainDims + '"' + shPart : (sh ? `(SH: ${sh}")` : '');
+            handleFieldChange('dimensions', formatted);
           };
-          
+
           return (
             <div key={fieldId}>
               <label className="st-label">{config.label}</label>
               <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    className="st-input text-center"
-                    value={length}
-                    onChange={(e) => updateDimensions(e.target.value, width, height)}
-                    disabled={isViewOnly}
-                    placeholder="L"
-                  />
-                </div>
-                <span className="text-text-muted">×</span>
-                <div className="flex-1">
+                <div className="flex-1 text-center">
+                  <span className="text-xs text-text-muted block mb-1">W</span>
                   <input
                     type="text"
                     className="st-input text-center"
                     value={width}
-                    onChange={(e) => updateDimensions(length, e.target.value, height)}
+                    onChange={(e) => updateDimensions(e.target.value, depth, height, seatHeight)}
                     disabled={isViewOnly}
                     placeholder="W"
                   />
                 </div>
-                <span className="text-text-muted">×</span>
-                <div className="flex-1">
+                <span className="text-text-muted mt-5">×</span>
+                <div className="flex-1 text-center">
+                  <span className="text-xs text-text-muted block mb-1">D</span>
+                  <input
+                    type="text"
+                    className="st-input text-center"
+                    value={depth}
+                    onChange={(e) => updateDimensions(width, e.target.value, height, seatHeight)}
+                    disabled={isViewOnly}
+                    placeholder="D"
+                  />
+                </div>
+                <span className="text-text-muted mt-5">×</span>
+                <div className="flex-1 text-center">
+                  <span className="text-xs text-text-muted block mb-1">H</span>
                   <input
                     type="text"
                     className="st-input text-center"
                     value={height}
-                    onChange={(e) => updateDimensions(length, width, e.target.value)}
+                    onChange={(e) => updateDimensions(width, depth, e.target.value, seatHeight)}
                     disabled={isViewOnly}
                     placeholder="H"
+                  />
+                </div>
+                <span className="text-text-muted mt-5">|</span>
+                <div className="flex-1 text-center">
+                  <span className="text-xs text-text-muted block mb-1">SH</span>
+                  <input
+                    type="text"
+                    className="st-input text-center"
+                    value={seatHeight}
+                    onChange={(e) => updateDimensions(width, depth, height, e.target.value)}
+                    disabled={isViewOnly}
+                    placeholder="SH"
                   />
                 </div>
               </div>

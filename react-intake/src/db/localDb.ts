@@ -133,17 +133,27 @@ export async function getAllFormsLocally(): Promise<LocalForm[]> {
 }
 
 /**
- * Delete form locally
+ * Delete form locally only (no sync queue)
+ * Used when syncing deletions from remote
+ */
+export async function deleteFormLocalOnly(formId: string): Promise<void> {
+  const db = await getDb();
+  await db.delete('forms', formId);
+}
+
+/**
+ * Delete form locally and add to sync queue
  */
 export async function deleteFormLocally(formId: string): Promise<void> {
   const db = await getDb();
   const existing = await db.get('forms', formId);
-  
+
   if (existing) {
     await db.delete('forms', formId);
-    
+
     // Add delete to sync queue if it was synced
     if (existing.remoteId) {
+      console.log(`[DB] Adding DELETE to sync queue for form ${formId} (remote: ${existing.remoteId})`);
       await addToSyncQueue({
         type: 'DELETE',
         table: 'forms',
@@ -177,13 +187,19 @@ async function addToSyncQueue(item: Omit<SyncQueueItem, 'id'>): Promise<void> {
     i.localId === item.localId && i.type === item.type
   );
 
+  console.log(`[DB] Adding to sync queue: ${item.type} for ${item.localId}, found ${duplicates.length} duplicates to remove`);
+
   // Remove older duplicate entries
   for (const dup of duplicates) {
-    if (dup.id) await db.delete('syncQueue', dup.id);
+    if (dup.id) {
+      console.log(`[DB] Removing duplicate queue item ${dup.id}`);
+      await db.delete('syncQueue', dup.id);
+    }
   }
 
   // Add new entry
-  await db.add('syncQueue', item as SyncQueueItem);
+  const id = await db.add('syncQueue', item as SyncQueueItem);
+  console.log(`[DB] Added to sync queue with ID ${id}`);
 }
 
 /**

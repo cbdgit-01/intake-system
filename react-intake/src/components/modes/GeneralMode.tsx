@@ -6,16 +6,15 @@ import PhotoCapture from '../PhotoCapture';
 import FieldConfiguration from '../FieldConfiguration';
 
 export default function GeneralMode() {
-  const { 
-    currentForm, 
-    items, 
-    addItem, 
+  const {
+    currentForm,
+    items,
+    addItem,
     removeItem,
     setIntakeStep,
     isViewOnly,
     isEditingExisting,
     setView,
-    resetAll,
     addingPhotoForItem,
     setAddingPhotoForItem,
     saveCurrentForm,
@@ -25,7 +24,7 @@ export default function GeneralMode() {
 
   const handleBack = () => {
     if (isEditingExisting) {
-      resetAll();
+      // Just go back to dashboard, don't reset the form data
       setView('dashboard');
     } else {
       setIntakeStep('consigner-info');

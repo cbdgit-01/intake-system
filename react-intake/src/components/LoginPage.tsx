@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Lock, Mail, Eye, EyeOff } from 'lucide-react';
+import { Lock, User, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../store/useAuth';
 import ThemeToggle from './ThemeToggle';
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -17,8 +17,8 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const result = await login(email, password);
-      
+      const result = await login(username, password);
+
       if (!result.success) {
         setError(result.error || 'Login failed');
         setPassword('');
@@ -60,19 +60,19 @@ export default function LoginPage() {
             )}
 
             <div className="space-y-4">
-              {/* Email */}
+              {/* Username */}
               <div>
-                <label className="st-label">Email</label>
+                <label className="st-label">Username</label>
                 <div className="relative">
-                  <Mail size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                  <User size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                   <input
-                    type="email"
+                    type="text"
                     className="st-input pl-10"
-                    placeholder="Enter email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
                     required
-                    autoComplete="email"
+                    autoComplete="username"
                     autoFocus
                   />
                 </div>
@@ -105,7 +105,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              disabled={isLoading || !email || !password}
+              disabled={isLoading || !username || !password}
               className="w-full st-button-primary mt-6"
             >
               {isLoading ? 'Signing in...' : 'Sign In'}

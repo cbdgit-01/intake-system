@@ -24,10 +24,11 @@ interface AppState {
   currentForm: IntakeForm | null;
   isViewOnly: boolean;
   isEditingExisting: boolean;
+  setViewOnly: (viewOnly: boolean) => void;
 
   // Initialize new form
   initNewForm: () => void;
-  
+
   // Load existing form
   loadExistingForm: (formId: string, viewOnly?: boolean) => Promise<boolean>;
 
@@ -105,10 +106,11 @@ export const useStore = create<AppState>((set, get) => ({
   currentForm: null,
   isViewOnly: false,
   isEditingExisting: false,
+  setViewOnly: (viewOnly) => set({ isViewOnly: viewOnly }),
 
   initNewForm: () => {
     const newForm: IntakeForm = {
-      id: uuidv4().substring(0, 8),
+      id: uuidv4(), // Full UUID for Supabase compatibility
       consignerType: 'new',
       consignerName: '',
       consignerNumber: '',
@@ -138,11 +140,12 @@ export const useStore = create<AppState>((set, get) => ({
   loadExistingForm: async (formId, viewOnly = false) => {
     const form = await loadForm(formId);
     if (form) {
+      // Allow editing even signed forms - viewOnly param controls this now
       set({
         currentForm: form,
         items: form.items || [],
         enabledFields: form.enabledFields || getDefaultEnabledFields(),
-        isViewOnly: viewOnly || form.status === 'signed',
+        isViewOnly: viewOnly,
         isEditingExisting: true,
         intakeStep: 'item-entry',
         signatureData: form.signatureData || null,

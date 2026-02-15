@@ -1,8 +1,26 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Camera, FileText, Mail, Search } from 'lucide-react';
+import { ArrowLeft, Camera, FileText, Mail, Search, Grid } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { searchConsignersFromForms } from '../../db';
 import { IntakeMode } from '../../types';
+
+// Format phone number with dashes: XXX-XXX-XXXX
+function formatPhoneNumber(value: string): string {
+  // Remove all non-digits
+  const digits = value.replace(/\D/g, '');
+
+  // Limit to 10 digits
+  const limited = digits.slice(0, 10);
+
+  // Format with dashes
+  if (limited.length <= 3) {
+    return limited;
+  } else if (limited.length <= 6) {
+    return `${limited.slice(0, 3)}-${limited.slice(3)}`;
+  } else {
+    return `${limited.slice(0, 3)}-${limited.slice(3, 6)}-${limited.slice(6)}`;
+  }
+}
 
 export default function ConsignerInfoStep() {
   const { 
@@ -85,13 +103,13 @@ export default function ConsignerInfoStep() {
   const modeOptions: { id: IntakeMode; label: string; description: string; icon: React.ReactNode }[] = [
     {
       id: 'detection',
-      label: 'Item Detection (Photo)',
+      label: 'Item Detection',
       description: 'Take one photo of multiple items. The system will auto-detect and separate each item.',
       icon: <Camera size={20} />,
     },
     {
       id: 'general',
-      label: 'General (Manual Entry)',
+      label: 'Manual Entry',
       description: 'Add items one at a time manually with optional photos.',
       icon: <FileText size={20} />,
     },
@@ -100,6 +118,12 @@ export default function ConsignerInfoStep() {
       label: 'Email Import',
       description: 'Import items from an email thread where items were pre-approved.',
       icon: <Mail size={20} />,
+    },
+    {
+      id: 'prepopulate',
+      label: 'Pre-populate',
+      description: 'Create a set number of empty item boxes to fill in as you go.',
+      icon: <Grid size={20} />,
     },
   ];
 
@@ -209,9 +233,9 @@ export default function ConsignerInfoStep() {
               <input
                 type="tel"
                 className="st-input"
-                placeholder="(XXX) XXX-XXXX"
+                placeholder="XXX-XXX-XXXX"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
               />
             </div>
           </>
@@ -244,9 +268,9 @@ export default function ConsignerInfoStep() {
               <input
                 type="tel"
                 className="st-input"
-                placeholder="(XXX) XXX-XXXX"
+                placeholder="XXX-XXX-XXXX"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
               />
             </div>
           </>

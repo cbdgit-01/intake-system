@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { UserPlus, Trash2, Edit, X, Check, Shield, User as UserIcon, Database, FileX, Search, AlertTriangle, Eye, Mail, Lock } from 'lucide-react';
+import { UserPlus, Trash2, Edit, X, Check, Shield, User as UserIcon, Database, FileX, Search, AlertTriangle, Eye, Mail } from 'lucide-react';
 import { useAuth, User } from '../store/useAuth';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
@@ -258,7 +258,6 @@ export default function UserManagement() {
                         </p>
                         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                           @{user.username} • {user.role}
-                          {user.email && ` • ${user.email}`}
                         </p>
                       </div>
                     </div>
@@ -615,7 +614,7 @@ function EmailSettingsAdmin() {
     setTestError('');
 
     try {
-      const API_URL = import.meta.env.VITE_DETECTION_API_URL || 'http://localhost:8000';
+      const API_URL = import.meta.env.VITE_API_URL || '';
       const response = await fetch(`${API_URL}/send-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -749,26 +748,25 @@ function EmailSettingsAdmin() {
 }
 
 interface AddUserFormProps {
-  onAdd: (user: { username: string; email: string; password: string; name: string; role: 'admin' | 'staff' }) => void;
+  onAdd: (user: { username: string; password: string; name: string; role: 'admin' | 'staff' }) => void;
   onCancel: () => void;
 }
 
 function AddUserForm({ onAdd, onCancel }: AddUserFormProps) {
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'staff'>('staff');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onAdd({ username, name, email, password, role });
+    onAdd({ username, name, password, role });
   };
 
   return (
     <form onSubmit={handleSubmit} className="st-card mb-4 border-primary">
       <h3 className="font-medium mb-4">Add New User</h3>
-      
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
           <label className="st-label">Name</label>
@@ -793,24 +791,7 @@ function AddUserForm({ onAdd, onCancel }: AddUserFormProps) {
           />
         </div>
         <div>
-          <label className="st-label">
-            <Mail size={14} className="inline mr-1" />
-            Email
-          </label>
-          <input
-            type="email"
-            className="st-input"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="user@example.com"
-            required
-          />
-        </div>
-        <div>
-          <label className="st-label">
-            <Lock size={14} className="inline mr-1" />
-            Password
-          </label>
+          <label className="st-label">Password</label>
           <input
             type="password"
             className="st-input"

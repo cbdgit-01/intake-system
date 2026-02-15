@@ -257,3 +257,59 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
+/* Print styles - only show the document preview */
+@media print {
+  /* Hide everything by default */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Show only the printable document */
+  .printable-document,
+  .printable-document * {
+    visibility: visible;
+  }
+
+  /* Position the printable document at top-left */
+  .printable-document {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white !important;
+    color: black !important;
+    padding: 20px !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Ensure good print colors */
+  .printable-document p,
+  .printable-document h1,
+  .printable-document h2,
+  .printable-document h3,
+  .printable-document td,
+  .printable-document th,
+  .printable-document span,
+  .printable-document strong {
+    color: black !important;
+  }
+
+  /* Hide buttons and interactive elements in print */
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Page breaks */
+  .page-break {
+    page-break-before: always;
+  }
+
+  /* Ensure images print */
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+}
+

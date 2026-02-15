@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  server: {
+    host: true,
+    allowedHosts: ['.ngrok-free.dev', '.ngrok.io']
+  },
   plugins: [
     react(),
     VitePWA({
@@ -77,12 +81,12 @@ export default defineConfig({
               }
             }
           },
-          // Cache API responses (Supabase) - Network first with fallback
+          // Cache API responses - Network first with fallback
           {
-            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/.*/i,
+            urlPattern: /\/api\/.*/i,
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'supabase-api-cache',
+              cacheName: 'api-cache',
               expiration: {
                 maxEntries: 100,
                 maxAgeSeconds: 60 * 60 * 24 // 1 day

@@ -106,6 +106,9 @@ export interface Consigner {
   updatedAt?: Date;
 }
 
+// Intake mode type (defined before IntakeForm since it's used there)
+export type IntakeMode = 'detection' | 'general' | 'email' | 'prepopulate';
+
 // Form/Record type
 export interface IntakeForm {
   id: string;
@@ -115,7 +118,7 @@ export interface IntakeForm {
   consignerAddress?: string;
   consignerPhone?: string;
   consignerEmail?: string;
-  intakeMode: 'detection' | 'general' | 'email' | null;
+  intakeMode: IntakeMode | null;
   items: IntakeItem[];
   enabledFields?: Record<FieldId, boolean>;
   status: 'draft' | 'signed';
@@ -138,7 +141,6 @@ export type Item = IntakeItem;
 // App navigation state
 export type AppView = 'dashboard' | 'intake' | 'preview';
 export type IntakeStep = 'consigner-type' | 'consigner-info' | 'item-entry' | 'preview';
-export type IntakeMode = 'detection' | 'general' | 'email';
 
 // Email parsing result (from Claude)
 export interface ParsedEmailData {
@@ -167,10 +169,25 @@ export function getDefaultEnabledFields(): Record<FieldId, boolean> {
   return fields as Record<FieldId, boolean>;
 }
 
+// UUID generation fallback for non-secure contexts
+function generateUUID(): string {
+  // Try native crypto.randomUUID first (works in secure contexts)
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  // Fallback for non-secure contexts (http://IP:port)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 // Create empty item helper
 export function createEmptyItem(): IntakeItem {
   return {
-    id: crypto.randomUUID(),
+    id: generateUUID(),
     name: '',
     notes: '',
     quantity: 1,

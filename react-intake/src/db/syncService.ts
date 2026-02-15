@@ -1,8 +1,8 @@
 /**
- * Sync Service - Handles synchronization between local IndexedDB and Supabase
+ * Sync Service - Handles synchronization between local IndexedDB and Railway backend
  */
 
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { formsApi, getToken } from '../lib/api';
 import {
   getPendingSyncItems,
   removeSyncQueueItem,
@@ -12,6 +12,8 @@ import {
   SyncQueueItem,
   incrementSyncItemRetry,
   shouldRetryItem,
+  getAllFormsLocally,
+  deleteFormLocalOnly,
 } from './localDb';
 import { IntakeForm } from '../types';
 
@@ -28,8 +30,8 @@ export interface SyncStatus {
 
 let syncPromise: Promise<{ success: number; failed: number }> | null = null;
 let syncCallbacks: SyncCallback[] = [];
-let realtimeSubscription: ReturnType<typeof supabase.channel> | null = null;
 let lastSyncTime: number | null = null;
+let lastSyncTimestamp: string | null = null; // ISO timestamp for incremental pulls
 let lastError: string | null = null;
 let statusSubscribers: ((status: SyncStatus) => void)[] = [];
 
@@ -43,16 +45,10 @@ export function onSyncComplete(callback: SyncCallback): () => void {
   };
 }
 
-/**
- * Notify all sync callbacks
- */
 function notifySyncCallbacks() {
   syncCallbacks.forEach(cb => cb());
 }
 
-/**
- * Get current sync status
- */
 async function getCurrentSyncStatus(): Promise<SyncStatus> {
   const pendingCount = await getLocalUnsyncedCount();
   return {
@@ -64,38 +60,23 @@ async function getCurrentSyncStatus(): Promise<SyncStatus> {
   };
 }
 
-/**
- * Notify status subscribers
- */
 async function notifyStatusSubscribers() {
   const status = await getCurrentSyncStatus();
   statusSubscribers.forEach(cb => cb(status));
 }
 
-/**
- * Subscribe to sync status changes
- */
 export function subscribeSyncStatus(callback: (status: SyncStatus) => void): () => void {
   statusSubscribers.push(callback);
-  
-  // Send initial status
   getCurrentSyncStatus().then(callback);
-  
   return () => {
     statusSubscribers = statusSubscribers.filter(cb => cb !== callback);
   };
 }
 
-/**
- * Full bidirectional sync (alias for fullSync)
- */
 export async function syncFull(): Promise<void> {
   await fullSync();
 }
 
-/**
- * Pull data from cloud (alias for pullFromRemote)
- */
 export async function syncFromCloud(): Promise<number> {
   return pullFromRemote();
 }
@@ -121,159 +102,114 @@ function validateForm(form: IntakeForm): { valid: boolean; error?: string } {
 }
 
 /**
- * Process a single sync queue item
+ * Convert an IntakeForm to the payload format expected by the API
  */
-async function processSyncItem(item: SyncQueueItem): Promise<boolean> {
-  if (!isSupabaseConfigured()) return false;
-
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-
-    switch (item.type) {
-      case 'CREATE':
-      case 'UPDATE': {
-        const form = item.payload as IntakeForm;
-
-        // VALIDATE before syncing
-        const validation = validateForm(form);
-        if (!validation.valid) {
-          console.error(`[Sync] Validation failed:`, validation.error);
-          if (item.id) await incrementSyncItemRetry(item.id, validation.error!);
-          return false;
-        }
-
-        // Handle CREATE
-        if (item.type === 'CREATE') {
-          const { data, error } = await supabase
-            .from('forms')
-            .insert({
-              id: form.id,
-              consigner_type: form.consignerType,
-              consigner_name: form.consignerName || '',
-              consigner_number: form.consignerNumber || null,
-              consigner_address: form.consignerAddress || null,
-              consigner_phone: form.consignerPhone || null,
-              consigner_email: form.consignerEmail || null,
-              intake_mode: form.intakeMode || null,
-              status: form.status || 'draft',
-              items: JSON.parse(JSON.stringify(form.items)),
-              enabled_fields: form.enabledFields || null,
-              signature_data: form.signatureData || null,
-              initials_1: form.initials1 || null,
-              initials_2: form.initials2 || null,
-              initials_3: form.initials3 || null,
-              accepted_by: form.acceptedBy || null,
-              signed_at: form.signedAt ? form.signedAt.toISOString() : null,
-              created_by: user?.id || null,
-              signed_by: form.status === 'signed' ? user?.id : null,
-            })
-            .select()
-            .single();
-
-          if (error) throw error;
-          if (data) {
-            await markFormSynced(item.localId, data.id);
-          }
-          return true;
-        }
-
-        // Handle UPDATE
-        const { error } = await supabase
-          .from('forms')
-          .update({
-            consigner_type: form.consignerType,
-            consigner_name: form.consignerName || '',
-            consigner_number: form.consignerNumber || null,
-            consigner_address: form.consignerAddress || null,
-            consigner_phone: form.consignerPhone || null,
-            consigner_email: form.consignerEmail || null,
-            intake_mode: form.intakeMode || null,
-            status: form.status || 'draft',
-            items: JSON.parse(JSON.stringify(form.items)),
-            enabled_fields: form.enabledFields || null,
-            signature_data: form.signatureData || null,
-            initials_1: form.initials1 || null,
-            initials_2: form.initials2 || null,
-            initials_3: form.initials3 || null,
-            accepted_by: form.acceptedBy || null,
-            signed_at: form.signedAt ? form.signedAt.toISOString() : null,
-            signed_by: form.status === 'signed' ? user?.id : null,
-          })
-          .eq('id', form.id);
-
-        if (error) throw error;
-        await markFormSynced(item.localId, form.id);
-        return true;
-      }
-
-      case 'DELETE': {
-        const payload = item.payload as { remoteId: string };
-        const { error } = await supabase
-          .from('forms')
-          .delete()
-          .eq('id', payload.remoteId);
-
-        if (error && error.code !== 'PGRST116') throw error; // Ignore "not found" errors
-        return true;
-      }
-
-      default:
-        return true;
-    }
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Sync] Error processing item:', errorMsg);
-    if (item.id) await incrementSyncItemRetry(item.id, errorMsg);
-    return false;
-  }
+function formToPayload(form: IntakeForm): Record<string, unknown> {
+  return {
+    id: form.id,
+    consignerType: form.consignerType,
+    consignerName: form.consignerName || '',
+    consignerNumber: form.consignerNumber || null,
+    consignerAddress: form.consignerAddress || null,
+    consignerPhone: form.consignerPhone || null,
+    consignerEmail: form.consignerEmail || null,
+    intakeMode: form.intakeMode || null,
+    status: form.status || 'draft',
+    items: JSON.parse(JSON.stringify(form.items)),
+    enabledFields: form.enabledFields || null,
+    signatureData: form.signatureData || null,
+    initials1: form.initials1 || null,
+    initials2: form.initials2 || null,
+    initials3: form.initials3 || null,
+    signatureDate: form.signatureDate || null,
+    acceptedBy: form.acceptedBy || null,
+    createdAt: form.createdAt instanceof Date ? form.createdAt.toISOString() : form.createdAt,
+    updatedAt: form.updatedAt instanceof Date ? form.updatedAt.toISOString() : form.updatedAt,
+    signedAt: form.signedAt ? (form.signedAt instanceof Date ? form.signedAt.toISOString() : form.signedAt) : null,
+  };
 }
 
 /**
- * Process all pending sync items with retry logic and Promise-based locking
+ * Process all pending sync items
  */
 export async function processSyncQueue(): Promise<{ success: number; failed: number }> {
-  // If sync already in progress, return existing promise
   if (syncPromise) {
     return syncPromise;
   }
 
-  if (!navigator.onLine || !isSupabaseConfigured()) {
+  if (!navigator.onLine || !getToken()) {
     return { success: 0, failed: 0 };
   }
 
-  // Create new sync promise
   syncPromise = (async () => {
     let success = 0;
     let failed = 0;
 
     try {
       const pendingItems = await getPendingSyncItems();
+      if (pendingItems.length === 0) return { success: 0, failed: 0 };
+
+      // Build batch operations
+      const operations: { type: 'CREATE' | 'UPDATE' | 'DELETE'; payload: Record<string, unknown> }[] = [];
+      const itemMap: Map<number, SyncQueueItem> = new Map();
 
       for (const item of pendingItems) {
-        // Check if item should be retried based on backoff
         if (!(await shouldRetryItem(item))) {
           if (item.retryCount >= 5) {
-            // Max retries exceeded - remove from queue
             await removeSyncQueueItem(item.id!);
-            console.error(`[Sync] Removing failed item after max retries:`, item);
+            console.error(`[Sync] Max retries exceeded for ${item.type} ${item.localId}`);
           }
           continue;
         }
 
-        const result = await processSyncItem(item);
+        if (item.type === 'CREATE' || item.type === 'UPDATE') {
+          const form = item.payload as IntakeForm;
+          const validation = validateForm(form);
+          if (!validation.valid) {
+            console.error(`[Sync] Validation failed:`, validation.error);
+            if (item.id) await incrementSyncItemRetry(item.id, validation.error!);
+            failed++;
+            continue;
+          }
+          operations.push({ type: item.type, payload: formToPayload(form) });
+        } else if (item.type === 'DELETE') {
+          const payload = item.payload as { remoteId?: string; id?: string };
+          operations.push({ type: 'DELETE', payload: { id: payload.remoteId || payload.id } });
+        }
 
-        if (result) {
-          await removeSyncQueueItem(item.id!);
+        if (item.id) itemMap.set(operations.length - 1, item);
+      }
+
+      if (operations.length === 0) return { success: 0, failed: 0 };
+
+      console.log(`[Sync] Pushing ${operations.length} operations`);
+      const response = await formsApi.pushSync(operations);
+
+      for (let i = 0; i < response.results.length; i++) {
+        const result = response.results[i];
+        const item = itemMap.get(i);
+
+        if (result.success) {
+          if (item?.id) {
+            await removeSyncQueueItem(item.id);
+            if (item.type === 'CREATE' || item.type === 'UPDATE') {
+              await markFormSynced(item.localId, result.id);
+            }
+          }
           success++;
         } else {
+          if (item?.id) {
+            await incrementSyncItemRetry(item.id, result.error || 'Sync failed');
+          }
+          console.error(`[Sync] Operation failed:`, result.error);
           failed++;
         }
       }
     } catch (error) {
-      console.error('Sync queue processing error:', error);
+      console.error('[Sync] Queue processing error:', error);
       lastError = error instanceof Error ? error.message : 'Sync failed';
     } finally {
-      syncPromise = null; // Release lock
+      syncPromise = null;
 
       if (success > 0) {
         lastSyncTime = Date.now();
@@ -290,33 +226,78 @@ export async function processSyncQueue(): Promise<{ success: number; failed: num
 }
 
 /**
- * Pull latest forms from Supabase to local
+ * Map API response form to local IntakeForm
+ */
+function mapRemoteToLocal(data: Record<string, unknown>): IntakeForm & { id: string } {
+  return {
+    id: data.id as string,
+    consignerType: data.consignerType as 'new' | 'existing',
+    consignerName: (data.consignerName as string) || '',
+    consignerNumber: (data.consignerNumber as string) || undefined,
+    consignerAddress: (data.consignerAddress as string) || undefined,
+    consignerPhone: (data.consignerPhone as string) || undefined,
+    consignerEmail: (data.consignerEmail as string) || undefined,
+    intakeMode: (data.intakeMode as 'detection' | 'general' | 'email' | null) || null,
+    status: (data.status as 'draft' | 'signed') || 'draft',
+    items: (data.items || []) as IntakeForm['items'],
+    enabledFields: data.enabledFields as IntakeForm['enabledFields'],
+    signatureData: (data.signatureData as string) || undefined,
+    initials1: (data.initials1 as string) || undefined,
+    initials2: (data.initials2 as string) || undefined,
+    initials3: (data.initials3 as string) || undefined,
+    signatureDate: (data.signatureDate as string) || undefined,
+    acceptedBy: (data.acceptedBy as string) || undefined,
+    createdAt: data.createdAt ? new Date(data.createdAt as string) : new Date(),
+    updatedAt: data.updatedAt ? new Date(data.updatedAt as string) : new Date(),
+    signedAt: data.signedAt ? new Date(data.signedAt as string) : undefined,
+  };
+}
+
+/**
+ * Pull latest forms from backend
  */
 export async function pullFromRemote(): Promise<number> {
-  if (!navigator.onLine || !isSupabaseConfigured()) return 0;
+  if (!navigator.onLine || !getToken()) {
+    return 0;
+  }
 
   try {
-    const { data, error } = await supabase
-      .from('forms')
-      .select('*')
-      .order('updated_at', { ascending: false });
+    console.log('[Sync] Pulling forms from server');
+    const response = await formsApi.pullSync(lastSyncTimestamp || undefined);
 
-    if (error) throw error;
-    if (!data) return 0;
+    // Update timestamp for next incremental pull
+    lastSyncTimestamp = response.server_time;
 
+    // Handle deleted forms
+    if (response.deleted_ids.length > 0) {
+      const localForms = await getAllFormsLocally();
+      for (const deletedId of response.deleted_ids) {
+        const localForm = localForms.find(f => f.remoteId === deletedId || f.localId === deletedId);
+        if (localForm && localForm.synced) {
+          console.log(`[Sync] Deleting local form ${localForm.localId} - deleted on server`);
+          await deleteFormLocalOnly(localForm.localId);
+        }
+      }
+    }
+
+    // Update/add forms
     let updated = 0;
-    for (const remoteForm of data) {
+    for (const remoteForm of response.forms) {
       await updateFormFromRemote(mapRemoteToLocal(remoteForm));
       updated++;
     }
 
-    lastSyncTime = Date.now();
-    lastError = null;
-    notifySyncCallbacks();
+    if (updated > 0 || response.deleted_ids.length > 0) {
+      console.log(`[Sync] Updated ${updated} forms, deleted ${response.deleted_ids.length}`);
+      lastSyncTime = Date.now();
+      lastError = null;
+      notifySyncCallbacks();
+    }
+
     notifyStatusSubscribers();
     return updated;
   } catch (error) {
-    console.error('Pull from remote failed:', error);
+    console.error('[Sync] Pull from remote failed:', error);
     lastError = error instanceof Error ? error.message : 'Pull failed';
     notifyStatusSubscribers();
     return 0;
@@ -329,47 +310,16 @@ export async function pullFromRemote(): Promise<number> {
 export async function fullSync(): Promise<{ pushed: number; pulled: number }> {
   const pushResult = await processSyncQueue();
   const pulled = await pullFromRemote();
-  
   return { pushed: pushResult.success, pulled };
 }
 
 /**
- * Subscribe to realtime updates from Supabase
+ * Subscribe to realtime updates (polling-based, replaces Supabase realtime)
+ * Returns a cleanup function. The actual polling is handled by the auto-sync interval in App.tsx.
  */
-export function subscribeToRealtimeUpdates(onUpdate: () => void): () => void {
-  if (!isSupabaseConfigured()) return () => {};
-
-  // Unsubscribe from existing subscription
-  if (realtimeSubscription) {
-    supabase.removeChannel(realtimeSubscription);
-  }
-
-  realtimeSubscription = supabase
-    .channel('forms-realtime')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'forms' },
-      async (payload) => {
-        console.log('Realtime update:', payload.eventType);
-        
-        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-          await updateFormFromRemote(mapRemoteToLocal(payload.new as RemoteForm));
-        }
-        
-        // For DELETE, we'd need to handle removal from local DB
-        // But we should be careful not to delete forms the user created locally
-        
-        onUpdate();
-      }
-    )
-    .subscribe();
-
-  return () => {
-    if (realtimeSubscription) {
-      supabase.removeChannel(realtimeSubscription);
-      realtimeSubscription = null;
-    }
-  };
+export function subscribeToRealtimeUpdates(_onUpdate: () => void): () => void {
+  // No-op - polling via App.tsx auto-sync interval handles this
+  return () => {};
 }
 
 /**
@@ -383,62 +333,11 @@ export function setupOnlineSync(): () => void {
 
   window.addEventListener('online', handleOnline);
 
-  // Initial sync if online
   if (navigator.onLine) {
     processSyncQueue();
   }
 
   return () => {
     window.removeEventListener('online', handleOnline);
-  };
-}
-
-// Type for remote form data
-interface RemoteForm {
-  id: string;
-  consigner_type: string;
-  consigner_name: string;
-  consigner_number: string | null;
-  consigner_address: string | null;
-  consigner_phone: string | null;
-  consigner_email: string | null;
-  intake_mode: string | null;
-  status: string;
-  items: unknown;
-  enabled_fields: unknown;
-  signature_data: string | null;
-  initials_1: string | null;
-  initials_2: string | null;
-  initials_3: string | null;
-  accepted_by: string | null;
-  created_at: string;
-  updated_at: string;
-  signed_at: string | null;
-}
-
-/**
- * Map remote Supabase form to local IntakeForm
- */
-function mapRemoteToLocal(data: RemoteForm): IntakeForm & { id: string } {
-  return {
-    id: data.id,
-    consignerType: data.consigner_type as 'new' | 'existing',
-    consignerName: data.consigner_name,
-    consignerNumber: data.consigner_number || undefined,
-    consignerAddress: data.consigner_address || undefined,
-    consignerPhone: data.consigner_phone || undefined,
-    consignerEmail: data.consigner_email || undefined,
-    intakeMode: data.intake_mode as 'detection' | 'general' | 'email' | null,
-    status: data.status as 'draft' | 'signed',
-    items: (data.items || []) as IntakeForm['items'],
-    enabledFields: data.enabled_fields as IntakeForm['enabledFields'],
-    signatureData: data.signature_data || undefined,
-    initials1: data.initials_1 || undefined,
-    initials2: data.initials_2 || undefined,
-    initials3: data.initials_3 || undefined,
-    acceptedBy: data.accepted_by || undefined,
-    createdAt: new Date(data.created_at),
-    updatedAt: new Date(data.updated_at),
-    signedAt: data.signed_at ? new Date(data.signed_at) : undefined,
   };
 }

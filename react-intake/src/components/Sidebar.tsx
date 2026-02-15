@@ -58,8 +58,9 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
   const handleOpenForm = async (formId: string) => {
     const form = await loadForm(formId);
     if (form) {
+      // Load in view mode by default, but user can click Edit to switch
       await loadExistingForm(formId, true);
-      setIntakeStep('item-entry');
+      setIntakeStep('preview'); // Go to preview so they can see Edit button
       setView('intake');
       navigate('/');
       onNavigate?.();

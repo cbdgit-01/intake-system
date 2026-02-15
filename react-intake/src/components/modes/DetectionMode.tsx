@@ -6,19 +6,18 @@ import PhotoCapture from '../PhotoCapture';
 import FieldConfiguration from '../FieldConfiguration';
 
 // Detection API endpoint - can be configured via environment variable
-const DETECTION_API_URL = import.meta.env.VITE_DETECTION_API_URL || 'http://localhost:8000';
+const DETECTION_API_URL = import.meta.env.VITE_API_URL || '';
 
 export default function DetectionMode() {
-  const { 
-    currentForm, 
-    items, 
+  const {
+    currentForm,
+    items,
     addItem,
     removeItem,
     setIntakeStep,
     isViewOnly,
     isEditingExisting,
     setView,
-    resetAll,
     addingPhotoForItem,
     setAddingPhotoForItem,
     saveCurrentForm,
@@ -33,7 +32,7 @@ export default function DetectionMode() {
 
   const handleBack = () => {
     if (isEditingExisting) {
-      resetAll();
+      // Just go back to dashboard, don't reset the form data
       setView('dashboard');
     } else {
       setIntakeStep('consigner-info');
@@ -88,8 +87,8 @@ export default function DetectionMode() {
     } catch (error) {
       console.error('Detection error:', error);
       // Fallback: add the image as a single item if detection fails
-      setDetectionMessage('Detection service unavailable. Image added as single item.');
-      
+      setDetectionMessage('Auto-detection not available. Photo added - you can add more items manually below.');
+
       // Convert file to base64 for fallback
       const reader = new FileReader();
       reader.onload = (event) => {
