@@ -30,6 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-download YOLO model during build (cached in image)
+RUN python -c "from ultralytics import YOLO; YOLO('yolov8m.pt')"
+
 # Copy backend code
 COPY backend/ .
 
