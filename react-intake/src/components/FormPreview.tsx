@@ -791,7 +791,14 @@ export default function FormPreview() {
                 </>
               )}
             </button>
-            <button onClick={() => window.print()} className="flex-1 st-button">
+            <button
+              onClick={() => {
+                showPhotosForCapture();
+                window.addEventListener('afterprint', hidePhotosAfterCapture, { once: true });
+                window.print();
+              }}
+              className="flex-1 st-button"
+            >
               <Printer size={18} className="inline mr-2" />
               Print Form
             </button>
