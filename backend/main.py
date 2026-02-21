@@ -8,6 +8,9 @@ import os
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()  # loads backend/.env if present (no-op in production)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,8 +22,6 @@ from pydantic import BaseModel
 import numpy as np
 import io
 import base64
-import requests as http_requests
-
 from db.connection import init_db, close_db
 from routers import auth, users, forms, consigners
 from models.schemas import EmailAttachment, EmailRequest
@@ -171,47 +172,68 @@ async def detect_items(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============ Email API (Brevo) ============
+# ============ Email API (Gmail SMTP) ============
 
-BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+GMAIL_ADDRESS = os.getenv("GMAIL_ADDRESS", "")
+GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
+GMAIL_FROM_NAME = os.getenv("GMAIL_FROM_NAME", "Consigned By Design")
+
+
+@app.get("/api/email/status")
+async def email_status():
+    """Check if Gmail SMTP is configured."""
+    configured = bool(GMAIL_ADDRESS and GMAIL_APP_PASSWORD)
+    return {
+        "configured": configured,
+        "from_email": GMAIL_ADDRESS if configured else None,
+        "from_name": GMAIL_FROM_NAME,
+    }
 
 
 @app.post("/send-email")
 async def send_email(request: EmailRequest):
-    """Send an email via Brevo API. Supports attachments (base64 encoded)."""
+    """Send an email via Gmail SMTP. Supports attachments (base64 encoded)."""
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email import encoders
+
+    if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "error": "Gmail SMTP not configured. Set GMAIL_ADDRESS and GMAIL_APP_PASSWORD environment variables."},
+        )
+
     try:
-        headers = {
-            "accept": "application/json",
-            "content-type": "application/json",
-            "api-key": request.api_key,
-        }
+        msg = MIMEMultipart("mixed")
+        msg["From"] = f"{request.from_name or GMAIL_FROM_NAME} <{GMAIL_ADDRESS}>"
+        msg["To"] = request.to_email
+        msg["Subject"] = request.subject
 
-        payload = {
-            "sender": {"name": request.from_name, "email": request.from_email},
-            "to": [{"email": request.to_email, "name": request.to_name or request.to_email}],
-            "subject": request.subject,
-            "textContent": request.message,
-            "htmlContent": f"<div style='font-family: Arial, sans-serif; line-height: 1.6;'>{request.message.replace(chr(10), '<br>')}</div>",
-        }
+        # HTML body
+        html_body = f"<div style='font-family: Arial, sans-serif; line-height: 1.6;'>{request.message.replace(chr(10), '<br>')}</div>"
+        msg.attach(MIMEText(html_body, "html"))
 
+        # Attachments
         if request.attachments:
-            payload["attachment"] = [
-                {"name": att.filename, "content": att.content}
-                for att in request.attachments
-            ]
+            for att in request.attachments:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(base64.b64decode(att.content))
+                encoders.encode_base64(part)
+                part.add_header("Content-Disposition", f"attachment; filename={att.filename}")
+                msg.attach(part)
 
-        response = http_requests.post(BREVO_API_URL, json=payload, headers=headers)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+            server.send_message(msg)
 
-        if response.status_code in [200, 201]:
-            result = response.json()
-            logger.info(f"Email sent to {request.to_email}, id: {result.get('messageId', 'unknown')}")
-            return JSONResponse({"success": True, "message": "Email sent successfully", "id": result.get("messageId")})
-        else:
-            error_data = response.json() if response.text else {}
-            error_msg = error_data.get("message", f"HTTP {response.status_code}")
-            logger.error(f"Brevo API error: {error_msg}")
-            return JSONResponse(status_code=400, content={"success": False, "error": error_msg})
+        logger.info(f"Email sent to {request.to_email} via Gmail SMTP")
+        return JSONResponse({"success": True, "message": "Email sent successfully"})
 
+    except smtplib.SMTPAuthenticationError:
+        logger.error("Gmail SMTP authentication failed")
+        return JSONResponse(status_code=400, content={"success": False, "error": "Gmail authentication failed. Check your App Password."})
     except Exception as e:
         logger.error(f"Email error: {str(e)}")
         return JSONResponse(status_code=400, content={"success": False, "error": str(e)})

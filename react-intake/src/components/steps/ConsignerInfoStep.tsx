@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Camera, FileText, Mail, Search, Grid } from 'lucide-react';
+import { ArrowLeft, Camera, FileText, Search, Grid } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import { searchConsignersFromForms } from '../../db';
 import { IntakeMode } from '../../types';
@@ -23,9 +23,9 @@ function formatPhoneNumber(value: string): string {
 }
 
 export default function ConsignerInfoStep() {
-  const { 
-    currentForm, 
-    setConsignerInfo, 
+  const {
+    currentForm,
+    setConsignerInfo,
     setIntakeMode,
     setIntakeStep,
     saveCurrentForm,
@@ -39,11 +39,15 @@ export default function ConsignerInfoStep() {
     phone?: string;
   }>>([]);
   const [selectedMode, setSelectedMode] = useState<IntakeMode | ''>('');
+  const [isSaving, setIsSaving] = useState(false);
 
   // Local form state
   const [name, setName] = useState(currentForm?.consignerName || '');
   const [number, setNumber] = useState(currentForm?.consignerNumber || '');
   const [address, setAddress] = useState(currentForm?.consignerAddress || '');
+  const [city, setCity] = useState(currentForm?.consignerCity || '');
+  const [state, setState] = useState(currentForm?.consignerState || '');
+  const [zip, setZip] = useState(currentForm?.consignerZip || '');
   const [phone, setPhone] = useState(currentForm?.consignerPhone || '');
 
   const isNewConsigner = currentForm?.consignerType === 'new';
@@ -66,6 +70,9 @@ export default function ConsignerInfoStep() {
     setName(consigner.name);
     setNumber(consigner.consignerNumber);
     setAddress(consigner.address || '');
+    setCity('');
+    setState('');
+    setZip('');
     setPhone(consigner.phone || '');
     setSearchQuery('');
     setSearchResults([]);
@@ -76,19 +83,19 @@ export default function ConsignerInfoStep() {
   };
 
   const handleContinue = async () => {
-    // Update store
+    if (isSaving) return;
+    setIsSaving(true);
     setConsignerInfo({
       consignerName: name,
       consignerNumber: number,
       consignerAddress: address,
+      consignerCity: city,
+      consignerState: state,
+      consignerZip: zip,
       consignerPhone: phone,
     });
     setIntakeMode(selectedMode as IntakeMode);
-    
-    // Save form
     await saveCurrentForm();
-    
-    // Go to item entry
     setIntakeStep('item-entry');
   };
 
@@ -97,14 +104,15 @@ export default function ConsignerInfoStep() {
     if (isNewConsigner) {
       return name.trim() && address.trim() && selectedMode;
     }
-    return name.trim() && number.trim() && selectedMode;
+    // Existing consigner: number is optional
+    return name.trim() && selectedMode;
   };
 
   const modeOptions: { id: IntakeMode; label: string; description: string; icon: React.ReactNode }[] = [
     {
       id: 'detection',
       label: 'Item Detection',
-      description: 'Take one photo of multiple items. The system will auto-detect and separate each item.',
+      description: 'Photograph a group of items and the system will auto-detect and separate them. Repeat with additional photos to keep adding to the list.',
       icon: <Camera size={20} />,
     },
     {
@@ -112,12 +120,6 @@ export default function ConsignerInfoStep() {
       label: 'Manual Entry',
       description: 'Add items one at a time manually with optional photos.',
       icon: <FileText size={20} />,
-    },
-    {
-      id: 'email',
-      label: 'Email Import',
-      description: 'Import items from an email thread where items were pre-approved.',
-      icon: <Mail size={20} />,
     },
     {
       id: 'prepopulate',
@@ -140,7 +142,7 @@ export default function ConsignerInfoStep() {
 
       <h2 className="text-xl font-semibold mb-2">Step 2: Consigner Information</h2>
       <p className="text-text-secondary mb-6">
-        {isNewConsigner 
+        {isNewConsigner
           ? "Enter the new consigner's information:"
           : "Enter the existing consigner's information:"}
       </p>
@@ -159,7 +161,7 @@ export default function ConsignerInfoStep() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          
+
           {/* Search results */}
           {searchResults.length > 0 && (
             <div className="mt-2 rounded-lg overflow-hidden" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--surface-border)' }}>
@@ -191,7 +193,7 @@ export default function ConsignerInfoStep() {
               ))}
             </div>
           )}
-          
+
           {searchQuery.length >= 2 && searchResults.length === 0 && (
             <p className="mt-2 text-sm text-text-muted">
               No matching consigners found. Enter manually below.
@@ -218,14 +220,49 @@ export default function ConsignerInfoStep() {
         {isNewConsigner ? (
           <>
             <div>
-              <label className="st-label">Address *</label>
-              <textarea
-                className="st-textarea"
-                rows={3}
-                placeholder="Street address, city, state, zip"
+              <label className="st-label">Street Address *</label>
+              <input
+                type="text"
+                className="st-input"
+                placeholder="Street address"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 sm:col-span-1">
+                <label className="st-label">City</label>
+                <input
+                  type="text"
+                  className="st-input"
+                  placeholder="City"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="st-label">State</label>
+                <input
+                  type="text"
+                  className="st-input"
+                  placeholder="IN"
+                  value={state}
+                  maxLength={2}
+                  onChange={(e) => setState(e.target.value.toUpperCase())}
+                />
+              </div>
+              <div>
+                <label className="st-label">Zip</label>
+                <input
+                  type="text"
+                  className="st-input"
+                  placeholder="00000"
+                  value={zip}
+                  maxLength={10}
+                  onChange={(e) => setZip(e.target.value)}
+                />
+              </div>
             </div>
 
             <div>
@@ -242,7 +279,7 @@ export default function ConsignerInfoStep() {
         ) : (
           <>
             <div>
-              <label className="st-label">Consigner Number *</label>
+              <label className="st-label">Consigner Number <span className="text-text-muted font-normal">(optional)</span></label>
               <input
                 type="text"
                 className="st-input"
@@ -253,14 +290,49 @@ export default function ConsignerInfoStep() {
             </div>
 
             <div>
-              <label className="st-label">Address (on file or enter new)</label>
-              <textarea
-                className="st-textarea"
-                rows={3}
-                placeholder="Street address, city, state, zip"
+              <label className="st-label">Street Address (on file or enter new)</label>
+              <input
+                type="text"
+                className="st-input"
+                placeholder="Street address"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2 sm:col-span-1">
+                <label className="st-label">City</label>
+                <input
+                  type="text"
+                  className="st-input"
+                  placeholder="City"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="st-label">State</label>
+                <input
+                  type="text"
+                  className="st-input"
+                  placeholder="IN"
+                  value={state}
+                  maxLength={2}
+                  onChange={(e) => setState(e.target.value.toUpperCase())}
+                />
+              </div>
+              <div>
+                <label className="st-label">Zip</label>
+                <input
+                  type="text"
+                  className="st-input"
+                  placeholder="00000"
+                  value={zip}
+                  maxLength={10}
+                  onChange={(e) => setZip(e.target.value)}
+                />
+              </div>
             </div>
 
             <div>
@@ -290,16 +362,16 @@ export default function ConsignerInfoStep() {
             onClick={() => setSelectedMode(mode.id)}
             className={`
               w-full st-card text-left transition-all duration-200
-              ${selectedMode === mode.id 
-                ? 'border-primary bg-primary/5' 
+              ${selectedMode === mode.id
+                ? 'border-primary bg-primary/5'
                 : 'hover:border-primary/50'}
             `}
           >
             <div className="flex items-start gap-4">
               <div className={`
                 p-2 rounded-lg transition-colors
-                ${selectedMode === mode.id 
-                  ? 'bg-primary text-white' 
+                ${selectedMode === mode.id
+                  ? 'bg-primary text-white'
                   : 'bg-surface text-text-secondary'}
               `}>
                 {mode.icon}
@@ -310,8 +382,8 @@ export default function ConsignerInfoStep() {
               </div>
               <div className={`
                 w-5 h-5 rounded-full border-2 flex items-center justify-center
-                ${selectedMode === mode.id 
-                  ? 'border-primary' 
+                ${selectedMode === mode.id
+                  ? 'border-primary'
                   : 'border-surface-border'}
               `}>
                 {selectedMode === mode.id && (
@@ -326,20 +398,19 @@ export default function ConsignerInfoStep() {
       {/* Continue button */}
       <button
         onClick={handleContinue}
-        disabled={!isValid()}
+        disabled={!isValid() || isSaving}
         className="w-full st-button-primary"
       >
-        Continue to Item Entry
+        {isSaving ? 'Saving...' : 'Continue to Item Entry'}
       </button>
 
       {!isValid() && (
         <p className="text-sm text-text-muted mt-2 text-center">
-          {isNewConsigner 
+          {isNewConsigner
             ? 'Please enter consigner name and address, then select a mode.'
-            : 'Please enter consigner name and number, then select a mode.'}
+            : 'Please enter consigner name, then select a mode.'}
         </p>
       )}
     </div>
   );
 }
-

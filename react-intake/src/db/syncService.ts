@@ -237,7 +237,7 @@ function mapRemoteToLocal(data: Record<string, unknown>): IntakeForm & { id: str
     consignerAddress: (data.consignerAddress as string) || undefined,
     consignerPhone: (data.consignerPhone as string) || undefined,
     consignerEmail: (data.consignerEmail as string) || undefined,
-    intakeMode: (data.intakeMode as 'detection' | 'general' | 'email' | null) || null,
+    intakeMode: (data.intakeMode as 'detection' | 'general' | 'prepopulate' | null) || null,
     status: (data.status as 'draft' | 'signed') || 'draft',
     items: (data.items || []) as IntakeForm['items'],
     enabledFields: data.enabledFields as IntakeForm['enabledFields'],

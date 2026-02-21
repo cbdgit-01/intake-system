@@ -553,53 +553,35 @@ export default function UserManagement() {
   );
 }
 
-// Inline Email Settings for Admin
+// Inline Email Settings for Admin (Gmail SMTP)
 function EmailSettingsAdmin() {
-  const [apiKey, setApiKey] = useState('');
-  const [fromEmail, setFromEmail] = useState('');
-  const [fromName, setFromName] = useState('Consigned By Design');
   const [isConfigured, setIsConfigured] = useState(false);
+  const [fromEmail, setFromEmail] = useState('');
+  const [fromName, setFromName] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
   const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
   const [testError, setTestError] = useState('');
   const [testEmail, setTestEmail] = useState('');
-  const [saveMessage, setSaveMessage] = useState('');
 
   useEffect(() => {
-    // Load existing config
-    const stored = localStorage.getItem('cbd-intake-email-config');
-    if (stored) {
-      try {
-        const config = JSON.parse(stored);
-        setApiKey(config.apiKey || '');
-        setFromEmail(config.fromEmail || '');
-        setFromName(config.fromName || 'Consigned By Design');
-        setIsConfigured(!!(config.apiKey && config.fromEmail));
-      } catch (e) {
-        console.error('Error loading email config:', e);
-      }
-    }
+    checkStatus();
   }, []);
 
-  const handleSave = () => {
-    localStorage.setItem('cbd-intake-email-config', JSON.stringify({
-      apiKey: apiKey.trim(),
-      fromEmail: fromEmail.trim(),
-      fromName: fromName.trim(),
-    }));
-    setIsConfigured(true);
-    setSaveMessage('Email settings saved!');
-    setTimeout(() => setSaveMessage(''), 3000);
-  };
-
-  const handleClear = () => {
-    if (confirm('Remove email configuration?')) {
-      localStorage.removeItem('cbd-intake-email-config');
-      setApiKey('');
-      setFromEmail('');
-      setFromName('Consigned By Design');
-      setIsConfigured(false);
-      setTestStatus('idle');
+  const checkStatus = async () => {
+    setIsLoading(true);
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || '';
+      const response = await fetch(`${API_URL}/api/email/status`);
+      if (response.ok) {
+        const status = await response.json();
+        setIsConfigured(status.configured);
+        setFromEmail(status.from_email || '');
+        setFromName(status.from_name || 'Consigned By Design');
+      }
+    } catch (e) {
+      console.error('Error checking email status:', e);
     }
+    setIsLoading(false);
   };
 
   const handleTestEmail = async () => {
@@ -609,7 +591,6 @@ function EmailSettingsAdmin() {
       return;
     }
 
-    handleSave(); // Save first
     setTestStatus('sending');
     setTestError('');
 
@@ -621,11 +602,8 @@ function EmailSettingsAdmin() {
         body: JSON.stringify({
           to_email: testEmail,
           to_name: 'Test User',
-          from_email: fromEmail,
-          from_name: fromName,
           subject: 'Test Email from CBD Intake',
-          message: 'This is a test email. If you received this, email is configured correctly!',
-          api_key: apiKey,
+          message: 'This is a test email. If you received this, Gmail SMTP is configured correctly!',
         }),
       });
 
@@ -642,87 +620,52 @@ function EmailSettingsAdmin() {
     }
   };
 
+  if (isLoading) {
+    return <div className="text-text-secondary p-4">Checking email configuration...</div>;
+  }
+
   return (
     <div>
-      <h3 className="text-lg font-medium mb-4">Email Configuration (Brevo)</h3>
+      <h3 className="text-lg font-medium mb-4">Email Configuration (Gmail SMTP)</h3>
       <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
-        Configure email sending for intake receipts. Emails will include the intake form as a PDF attachment.
+        Send intake receipts with PDF attachments via Gmail SMTP.
       </p>
 
-      {/* Setup Instructions */}
-      <div className="st-card mb-6">
-        <p className="font-medium mb-2">Setup:</p>
-        <ol className="list-decimal list-inside space-y-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-          <li>Create account at <a href="https://www.brevo.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">brevo.com</a></li>
-          <li>Go to SMTP & API → API Keys</li>
-          <li>Create a new API key and paste below</li>
-        </ol>
-        <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-          Free tier: 300 emails/day (no domain verification required)
-        </p>
-      </div>
+      {/* Status */}
+      {isConfigured ? (
+        <div className="st-success mb-6">
+          Gmail SMTP is configured. Sending from: {fromName} &lt;{fromEmail}&gt;
+        </div>
+      ) : (
+        <div className="st-error mb-6">
+          Gmail SMTP is not configured. Set the environment variables on Railway.
+        </div>
+      )}
 
-      {/* Config Form */}
-      <div className="space-y-4 mb-6">
-        <div>
-          <label className="st-label">API Key *</label>
-          <input
-            type="password"
-            className="st-input"
-            placeholder="xkeysib-xxxxxxxxx..."
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-          />
+      {/* Setup Instructions (only if not configured) */}
+      {!isConfigured && (
+        <div className="st-card mb-6">
+          <p className="font-medium mb-2">Setup:</p>
+          <ol className="list-decimal list-inside space-y-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+            <li>Enable 2-Step Verification on your Google Account</li>
+            <li>Go to Google Account → Security → App Passwords</li>
+            <li>Generate a new App Password for "Mail"</li>
+            <li>Set these environment variables on Railway:</li>
+          </ol>
+          <div className="mt-3 p-3 rounded font-mono text-xs" style={{ backgroundColor: 'var(--background)' }}>
+            <div>GMAIL_ADDRESS=your@gmail.com</div>
+            <div>GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx</div>
+            <div>GMAIL_FROM_NAME=Consigned By Design</div>
+          </div>
         </div>
-        <div>
-          <label className="st-label">From Email *</label>
-          <input
-            type="email"
-            className="st-input"
-            placeholder="noreply@yourdomain.com"
-            value={fromEmail}
-            onChange={(e) => setFromEmail(e.target.value)}
-          />
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-            Use your Brevo account email or any verified sender
-          </p>
-        </div>
-        <div>
-          <label className="st-label">From Name</label>
-          <input
-            type="text"
-            className="st-input"
-            placeholder="Consigned By Design"
-            value={fromName}
-            onChange={(e) => setFromName(e.target.value)}
-          />
-        </div>
-      </div>
+      )}
 
       {/* Status Messages */}
-      {saveMessage && <div className="st-success mb-4">{saveMessage}</div>}
-      {isConfigured && !saveMessage && <div className="st-success mb-4">Email is configured</div>}
       {testStatus === 'success' && <div className="st-success mb-4">Test email sent!</div>}
       {testStatus === 'error' && <div className="st-error mb-4">{testError}</div>}
 
-      {/* Actions */}
-      <div className="flex gap-3 mb-6">
-        <button
-          onClick={handleSave}
-          disabled={!apiKey.trim() || !fromEmail.trim()}
-          className="st-button-primary"
-        >
-          Save Configuration
-        </button>
-        {isConfigured && (
-          <button onClick={handleClear} className="st-button text-error">
-            Remove
-          </button>
-        )}
-      </div>
-
       {/* Test Section */}
-      {apiKey && fromEmail && (
+      {isConfigured && (
         <div className="st-card">
           <p className="font-medium mb-3">Send Test Email</p>
           <div className="flex gap-3">

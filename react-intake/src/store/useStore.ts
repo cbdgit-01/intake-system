@@ -34,7 +34,7 @@ interface AppState {
 
   // Consigner info
   setConsignerType: (type: 'new' | 'existing') => void;
-  setConsignerInfo: (info: Partial<Pick<IntakeForm, 'consignerName' | 'consignerNumber' | 'consignerAddress' | 'consignerPhone'>>) => void;
+  setConsignerInfo: (info: Partial<Pick<IntakeForm, 'consignerName' | 'consignerNumber' | 'consignerAddress' | 'consignerCity' | 'consignerState' | 'consignerZip' | 'consignerPhone'>>) => void;
 
   // Intake mode
   setIntakeMode: (mode: IntakeMode) => void;
@@ -57,10 +57,14 @@ interface AppState {
   initials: { init1: string; init2: string; init3: string };
   signatureDate: string;
   acceptedBy: string;
+  contractInitials: string;
   setSignatureData: (data: string | null) => void;
   setInitials: (initials: { init1?: string; init2?: string; init3?: string }) => void;
   setSignatureDate: (date: string) => void;
   setAcceptedBy: (name: string) => void;
+  setContractInitials: (val: string) => void;
+  paymentPreference: string;
+  setPaymentPreference: (val: string) => void;
 
   // Save/Complete
   saveCurrentForm: (status?: 'draft' | 'signed') => Promise<string | null>;
@@ -156,6 +160,8 @@ export const useStore = create<AppState>((set, get) => ({
         },
         signatureDate: form.signatureDate || new Date().toISOString().split('T')[0],
         acceptedBy: form.acceptedBy || '',
+        contractInitials: form.contractInitials || '',
+        paymentPreference: form.paymentPreference || '',
       });
       return true;
     }
@@ -246,17 +252,21 @@ export const useStore = create<AppState>((set, get) => ({
   initials: { init1: '', init2: '', init3: '' },
   signatureDate: new Date().toISOString().split('T')[0],
   acceptedBy: '',
+  contractInitials: '',
+  paymentPreference: '',
 
   setSignatureData: (data) => set({ signatureData: data }),
-  setInitials: (initials) => set((state) => ({ 
-    initials: { ...state.initials, ...initials } 
+  setInitials: (initials) => set((state) => ({
+    initials: { ...state.initials, ...initials }
   })),
   setSignatureDate: (date) => set({ signatureDate: date }),
   setAcceptedBy: (name) => set({ acceptedBy: name }),
+  setContractInitials: (val) => set({ contractInitials: val }),
+  setPaymentPreference: (val) => set({ paymentPreference: val }),
 
   // Save
   saveCurrentForm: async (status) => {
-    const { currentForm, items, enabledFields, signatureData, initials, signatureDate, acceptedBy, triggerFormsRefresh } = get();
+    const { currentForm, items, enabledFields, signatureData, initials, signatureDate, acceptedBy, contractInitials, paymentPreference, triggerFormsRefresh } = get();
     if (!currentForm) return null;
 
     const formToSave: IntakeForm = {
@@ -268,6 +278,8 @@ export const useStore = create<AppState>((set, get) => ({
       initials1: initials.init1,
       initials2: initials.init2,
       initials3: initials.init3,
+      contractInitials: contractInitials || undefined,
+      paymentPreference: paymentPreference || undefined,
       signatureDate,
       acceptedBy,
       updatedAt: new Date(),
@@ -316,6 +328,8 @@ export const useStore = create<AppState>((set, get) => ({
       initials: { init1: '', init2: '', init3: '' },
       signatureDate: new Date().toISOString().split('T')[0],
       acceptedBy: '',
+      contractInitials: '',
+      paymentPreference: '',
       addingPhotoForItem: null,
     });
   },
@@ -333,6 +347,8 @@ export const useStore = create<AppState>((set, get) => ({
       initials: { init1: '', init2: '', init3: '' },
       signatureDate: new Date().toISOString().split('T')[0],
       acceptedBy: '',
+      contractInitials: '',
+      paymentPreference: '',
       parsedEmailData: null,
       emailImportStep: 'queue',
       selectedConsignerNumber: null,

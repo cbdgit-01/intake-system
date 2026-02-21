@@ -107,7 +107,7 @@ export interface Consigner {
 }
 
 // Intake mode type (defined before IntakeForm since it's used there)
-export type IntakeMode = 'detection' | 'general' | 'email' | 'prepopulate';
+export type IntakeMode = 'detection' | 'general' | 'prepopulate';
 
 // Form/Record type
 export interface IntakeForm {
@@ -116,6 +116,9 @@ export interface IntakeForm {
   consignerName: string;
   consignerNumber?: string;
   consignerAddress?: string;
+  consignerCity?: string;
+  consignerState?: string;
+  consignerZip?: string;
   consignerPhone?: string;
   consignerEmail?: string;
   intakeMode: IntakeMode | null;
@@ -127,6 +130,8 @@ export interface IntakeForm {
   initials1?: string;
   initials2?: string;
   initials3?: string;
+  contractInitials?: string;
+  paymentPreference?: string;
   signatureDate?: string;
   acceptedBy?: string;
   // Timestamps

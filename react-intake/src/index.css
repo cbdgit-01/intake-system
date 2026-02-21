@@ -257,20 +257,25 @@ input[type="number"] {
   -moz-appearance: textfield;
 }
 
-/* Print styles - only show the document preview */
+/* Print styles */
 @media print {
   /* Hide everything by default */
   body * {
     visibility: hidden;
   }
 
-  /* Show only the printable document */
+  /* Hide buttons and interactive elements */
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  /* === Intake Agreement print (default) === */
   .printable-document,
   .printable-document * {
     visibility: visible;
   }
 
-  /* Position the printable document at top-left */
   .printable-document {
     position: absolute;
     left: 0;
@@ -283,7 +288,6 @@ input[type="number"] {
     box-shadow: none !important;
   }
 
-  /* Ensure good print colors */
   .printable-document p,
   .printable-document h1,
   .printable-document h2,
@@ -295,10 +299,36 @@ input[type="number"] {
     color: black !important;
   }
 
-  /* Hide buttons and interactive elements in print */
-  button,
-  .no-print {
+  /* Show photos section when printing the form */
+  .printable-photos {
+    display: block !important;
+    visibility: visible !important;
+  }
+
+  .printable-photos * {
+    visibility: visible !important;
+  }
+
+  /* === Items list print (triggered by body.printing-items) === */
+  body.printing-items .printable-document {
     display: none !important;
+  }
+
+  body.printing-items .printable-items-list {
+    display: block !important;
+    visibility: visible;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white;
+    color: black;
+    padding: 20px;
+  }
+
+  body.printing-items .printable-items-list,
+  body.printing-items .printable-items-list * {
+    visibility: visible;
   }
 
   /* Page breaks */

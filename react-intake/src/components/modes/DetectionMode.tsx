@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react';
-import { ArrowLeft, Upload, Camera, Settings, Eye, Plus, Minus, RotateCcw, Loader2 } from 'lucide-react';
+import { ArrowLeft, Upload, Camera, Settings, Eye, Plus, RotateCcw, Loader2, Save, Printer } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import ItemCard from '../ItemCard';
 import PhotoCapture from '../PhotoCapture';
 import FieldConfiguration from '../FieldConfiguration';
+import PrintableItemsList from '../PrintableItemsList';
 
 // Detection API endpoint - can be configured via environment variable
 const DETECTION_API_URL = import.meta.env.VITE_API_URL || '';
@@ -105,10 +106,19 @@ export default function DetectionMode() {
   const handleResetImage = () => {
     setMainImage(null);
     setDetectionComplete(false);
+    setDetectionMessage(null);
     // Clear items that were from detection
     while (items.length > 0) {
       removeItem(items.length - 1);
     }
+  };
+
+  // Reset photo state only — keeps existing items and appends new detections to them
+  const handleDetectAnother = () => {
+    setMainImage(null);
+    setDetectionComplete(false);
+    setDetectionMessage(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleAddItemWithPhoto = () => {
@@ -120,12 +130,6 @@ export default function DetectionMode() {
     addItem();
   };
 
-  const handleRemoveLastItem = () => {
-    if (items.length > 0) {
-      removeItem(items.length - 1);
-    }
-  };
-
   const handleSkipDetection = () => {
     addItem();
     setDetectionComplete(true);
@@ -134,6 +138,17 @@ export default function DetectionMode() {
   const handlePreview = async () => {
     await saveCurrentForm();
     setIntakeStep('preview');
+  };
+
+  const handleSaveEdits = async () => {
+    await saveCurrentForm();
+    setView('dashboard');
+  };
+
+  const handlePrintItems = () => {
+    document.body.classList.add('printing-items');
+    window.print();
+    document.body.classList.remove('printing-items');
   };
 
   // If capturing photo for an item
@@ -320,6 +335,10 @@ export default function DetectionMode() {
             <>
               <h4 className="font-medium mb-3">Add or Remove Items</h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                <button onClick={handleDetectAnother} className="st-button">
+                  <Camera size={18} className="inline mr-2" />
+                  Detect Another Photo
+                </button>
                 <button onClick={handleAddItemWithPhoto} className="st-button">
                   <Camera size={18} className="inline mr-2" />
                   Add Item (with photo)
@@ -327,14 +346,6 @@ export default function DetectionMode() {
                 <button onClick={handleAddItemNoPhoto} className="st-button">
                   <Plus size={18} className="inline mr-2" />
                   Add Item (no photo)
-                </button>
-                <button 
-                  onClick={handleRemoveLastItem} 
-                  className="st-button"
-                  disabled={items.length === 0}
-                >
-                  <Minus size={18} className="inline mr-2" />
-                  Remove Last Item
                 </button>
               </div>
             </>
@@ -351,14 +362,29 @@ export default function DetectionMode() {
                   {totalQuantity !== acceptedCount && ` (${totalQuantity} total quantity)`}
                 </p>
               </div>
-              <button onClick={handlePreview} className="st-button-primary">
-                <Eye size={18} className="inline mr-2" />
-                Preview Intake Agreement
-              </button>
+              <div className="flex gap-2">
+                <button onClick={handlePrintItems} className="st-button">
+                  <Printer size={18} className="inline mr-2" />
+                  Print Items
+                </button>
+                {isEditingExisting && (
+                  <button onClick={handleSaveEdits} className="st-button">
+                    <Save size={18} className="inline mr-2" />
+                    Save Edits
+                  </button>
+                )}
+                <button onClick={handlePreview} className="st-button-primary">
+                  <Eye size={18} className="inline mr-2" />
+                  Preview Intake Agreement
+                </button>
+              </div>
             </div>
           )}
         </>
       )}
+
+      {/* Hidden printable items list */}
+      <PrintableItemsList />
     </div>
   );
 }

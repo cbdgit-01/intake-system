@@ -103,9 +103,7 @@ class EmailAttachment(BaseModel):
 class EmailRequest(BaseModel):
     to_email: str
     to_name: Optional[str] = None
-    from_email: str
-    from_name: Optional[str] = "Consigned By Design"
+    from_name: Optional[str] = None
     subject: str
     message: str
     attachments: Optional[List[EmailAttachment]] = None
-    api_key: str

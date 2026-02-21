@@ -1,10 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
 import { ArrowLeft, Download, Printer, CheckCircle, Home, FileText, ImageIcon, X, Mail, Send, Edit, Loader2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { useAuth } from '../store/useAuth';
-import { isEmailConfigured, sendEmailWithPDF } from '../lib/emailService';
+import { isEmailConfigured as checkEmailConfigured, sendEmailWithPDF } from '../lib/emailService';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -18,10 +18,14 @@ export default function FormPreview() {
     initials,
     signatureDate,
     acceptedBy,
+    contractInitials,
+    paymentPreference,
     setSignatureData,
     setInitials,
     setSignatureDate,
     setAcceptedBy,
+    setContractInitials,
+    setPaymentPreference,
     completeIntake,
     setIntakeStep,
     setView,
@@ -30,6 +34,8 @@ export default function FormPreview() {
     setDocumentOnlyPreview,
     setViewOnly,
   } = useStore();
+
+  const isNewConsigner = currentForm?.consignerType === 'new';
 
   const { currentUser } = useAuth();
   const navigate = useNavigate();
@@ -45,17 +51,26 @@ export default function FormPreview() {
   const [emailSending, setEmailSending] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [emailConfigured, setEmailConfigured] = useState(false);
+
+  useEffect(() => {
+    checkEmailConfigured().then(setEmailConfigured);
+  }, []);
+
+  const hasPaymentInitial = paymentPreference.trim() !== '';
 
   // Check if form can be completed
   const canComplete = () => {
-    return (
+    const base =
       acceptedBy.trim() !== '' &&
       initials.init1.trim() !== '' &&
       initials.init2.trim() !== '' &&
       initials.init3.trim() !== '' &&
       signatureData !== null &&
-      signatureDate !== ''
-    );
+      signatureDate !== '';
+    if (!isNewConsigner) return base;
+    return base && contractInitials.trim() !== '' && !!hasPaymentInitial;
   };
 
   const getMissingFields = () => {
@@ -64,6 +79,8 @@ export default function FormPreview() {
     if (!initials.init1.trim() || !initials.init2.trim() || !initials.init3.trim()) {
       missing.push('consigner initials');
     }
+    if (isNewConsigner && !contractInitials.trim()) missing.push('contract initials');
+    if (isNewConsigner && !hasPaymentInitial) missing.push('payment preference');
     if (!signatureData) missing.push('consigner signature');
     if (!signatureDate) missing.push('date');
     return missing;
@@ -82,7 +99,10 @@ export default function FormPreview() {
   };
 
   const handleCompleteIntake = async () => {
+    if (isCompleting) return;
+    setIsCompleting(true);
     const success = await completeIntake();
+    setIsCompleting(false);
     if (success) {
       setFormSigned(true);
       setShowBalloons(true);
@@ -114,16 +134,28 @@ export default function FormPreview() {
   };
 
   // Generate PDF and return as base64 string
+  const showPhotosForCapture = () => {
+    const el = documentRef.current?.querySelector('.printable-photos') as HTMLElement | null;
+    if (el) el.style.display = 'block';
+  };
+
+  const hidePhotosAfterCapture = () => {
+    const el = documentRef.current?.querySelector('.printable-photos') as HTMLElement | null;
+    if (el) el.style.display = 'none';
+  };
+
   const generatePDFBase64 = async (): Promise<string | null> => {
     if (!documentRef.current) return null;
 
     try {
+      showPhotosForCapture();
       const canvas = await html2canvas(documentRef.current, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
       });
+      hidePhotosAfterCapture();
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({
@@ -155,12 +187,14 @@ export default function FormPreview() {
 
     setIsDownloading(true);
     try {
+      showPhotosForCapture();
       const canvas = await html2canvas(documentRef.current, {
         scale: 2,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
       });
+      hidePhotosAfterCapture();
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({
@@ -182,6 +216,7 @@ export default function FormPreview() {
       const fileName = `intake-${currentForm?.consignerName?.replace(/\s+/g, '-') || 'form'}-${new Date().toISOString().split('T')[0]}.pdf`;
       pdf.save(fileName);
     } catch (error) {
+      hidePhotosAfterCapture();
       console.error('Error generating PDF:', error);
       alert('Failed to generate PDF. Please try printing instead.');
     } finally {
@@ -280,32 +315,96 @@ export default function FormPreview() {
             <p><strong>Consigner #:</strong> {currentForm.consignerNumber}</p>
           )}
           {currentForm?.consignerAddress && (
-            <p><strong>Address:</strong> {currentForm.consignerAddress.replace(/\n/g, ', ')}</p>
+            <p>
+              <strong>Address:</strong> {currentForm.consignerAddress}
+              {(currentForm.consignerCity || currentForm.consignerState || currentForm.consignerZip) && (
+                <>, {currentForm.consignerCity}{currentForm.consignerCity && currentForm.consignerState ? ', ' : ''}{currentForm.consignerState}{currentForm.consignerZip ? ' ' + currentForm.consignerZip : ''}</>
+              )}
+            </p>
           )}
           {currentForm?.consignerPhone && (
             <p><strong>Phone:</strong> {currentForm.consignerPhone}</p>
           )}
         </div>
 
-        <p className="text-sm"><strong>Accepted by:</strong> {acceptedBy || '________'}</p>
+        <div className="mb-4 space-y-1">
+          <p className="text-sm"><strong>Accepted by:</strong> {acceptedBy || '________'}</p>
+          <p className="text-sm"><strong>Intake Date:</strong> {signatureDate || '____________'}</p>
+        </div>
 
         {/* Acknowledgment */}
-        <div className="my-6 p-4 bg-gray-50 rounded-lg">
-          <p className="text-sm text-gray-600">
-            I hereby agree to consign the items listed below with Consigned By Design.
-            I understand and accept the terms and conditions of the consignment agreement.
+        <div className="my-4 p-4 bg-gray-50 rounded-lg">
+          <p className="text-sm text-gray-700">
+            I hereby agree to consign with Consigned by Design (CBD) the items listed here. These items are my personal
+            property or items I am authorized to sell. By consigning, I acknowledge, accept, and agree to all the terms
+            of the CBD contract. Items listed here are subject to further review before being accepted or maintained for resale.
           </p>
         </div>
 
         {/* Initials section */}
-        <div className="mb-6 space-y-2 text-sm">
-          <p>I have reviewed and agree to the items listed. <strong>Initials: {initials.init1 || '______'}</strong></p>
-          <p>I understand and accept the consignment terms. <strong>Initials: {initials.init2 || '______'}</strong></p>
-          <p>I confirm all item information is accurate. <strong>Initials: {initials.init3 || '______'}</strong></p>
+        <div className="mb-4 space-y-2 text-sm">
+          <div className="flex items-center gap-3">
+            <span className="font-bold w-14 shrink-0">{initials.init1 || '______'}</span>
+            <span>I agree to special Holiday terms and the shorter consignment period.</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-bold w-14 shrink-0">{initials.init2 || '______'}</span>
+            <span>I have no specific requirements other than those noted below.</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-bold w-14 shrink-0">{initials.init3 || '______'}</span>
+            <span>I agree to participate in all sales &amp; promotions of CBD and markdowns will be equally shared as per contract.</span>
+          </div>
         </div>
 
+        {/* Contract section — new consigners only */}
+        {isNewConsigner && (
+          <div className="mb-4 border border-gray-300 rounded-lg p-4">
+            <h4 className="font-bold text-sm mb-2">Consignment Contract — Key Terms</h4>
+            <ul className="text-xs text-gray-700 space-y-1 mb-3 list-disc list-inside">
+              <li>Furniture &amp; other large items must be preapproved by email.</li>
+              <li>One-Time $25 Account Registration Fee.</li>
+              <li>Pricing request(s) must occur during intake.</li>
+              <li>120-day Consignment Period with markdowns.</li>
+              <li>Shorter Consignment Period for holiday items.</li>
+              <li>Items become CBD property at expiration.</li>
+              <li>Cross-Posting / Selling is not permitted.</li>
+              <li>We will not contact you for account activity/reminders.</li>
+              <li>Twenty-five percent (25%) of original price is charged for reclaim during 120 days of consignment.</li>
+              <li>Checks must be picked up &amp; cashed within 180 days of issue/expiration. Expired checks will not be reissued.</li>
+            </ul>
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-xs text-gray-600 italic">Consignor acknowledges receipt and agreement to all contract terms above.</p>
+              <div className="text-center shrink-0">
+                <div className="w-24 h-8 border-b border-gray-500 flex items-end justify-center pb-1 text-sm font-bold">
+                  {contractInitials || ''}
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">Consignor Initials</p>
+              </div>
+            </div>
+            {/* Payment preference */}
+            <div className="mt-3 border-t border-gray-200 pt-3">
+              <p className="text-xs font-semibold mb-2">PAYMENT — please select your preference:</p>
+              <div className="space-y-1 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold w-4">{paymentPreference === 'cash' ? '✓' : '☐'}</span>
+                  <span>I would like to maintain cash on account.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold w-4">{paymentPreference === 'pickup' ? '✓' : '☐'}</span>
+                  <span>I will pick up my check(s) at the store.</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold w-4">{paymentPreference === 'mail' ? '✓' : '☐'}</span>
+                  <span>I would like my check(s) mailed (out of state).</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Signature line */}
-        <div className="flex flex-col sm:flex-row justify-between items-end gap-4 mb-6 pb-6 border-b border-gray-200">
+        <div className="flex flex-col sm:flex-row justify-between items-end gap-4 mb-4 pb-4 border-b border-gray-200">
           <div>
             <p className="text-sm mb-1">Consigner Signature:</p>
             {signatureData ? (
@@ -314,7 +413,6 @@ export default function FormPreview() {
               <div className="w-48 h-16 border-b border-gray-400" />
             )}
           </div>
-          <p className="text-sm"><strong>Date:</strong> {signatureDate || '____________'}</p>
         </div>
 
         {/* Items Table */}
@@ -357,6 +455,33 @@ export default function FormPreview() {
           {enabledFields.quantity && <span>Total Qty: {totalQuantity}</span>}
           {enabledFields.price && <span>Total: ${totalPrice.toFixed(2)}</span>}
         </div>
+
+        {/* Photos — hidden on screen, shown in print/PDF */}
+        {acceptedItems.some(item => item.photos.length > 0) && (
+          <div className="printable-photos mt-6" style={{ display: 'none' }}>
+            <h3 className="font-bold text-base mb-3 border-t border-gray-300 pt-4">Item Photos</h3>
+            {acceptedItems.map((item, idx) => {
+              if (item.photos.length === 0) return null;
+              return (
+                <div key={item.id} className="mb-4">
+                  <p className="text-sm font-medium mb-2">
+                    Item #{idx + 1}: {item.name || 'Unnamed'}
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {item.photos.map((photo, photoIdx) => (
+                      <img
+                        key={photoIdx}
+                        src={photo}
+                        alt={`Item ${idx + 1} photo ${photoIdx + 1}`}
+                        style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #ccc' }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Item Photos Section - hidden in document-only mode */}
@@ -412,9 +537,18 @@ export default function FormPreview() {
       {!documentOnlyPreview && !isViewOnly && !formSigned && (
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-2">E-Signature</h3>
-          <p className="text-text-secondary mb-4">
+          <p className="text-text-secondary mb-2">
             Please review the agreement above and complete the signature section.
           </p>
+          <a
+            href="/CBD_%20contract.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm text-primary underline mb-4"
+          >
+            <FileText size={14} />
+            View full CBD Consignment Contract (PDF)
+          </a>
 
           {/* Staff acceptance */}
           <div className="mb-4">
@@ -435,11 +569,11 @@ export default function FormPreview() {
           <div className="st-divider" />
 
           {/* Consigner initials */}
-          <p className="font-medium mb-3">Consigner - Please initial each statement:</p>
-          
+          <p className="font-medium mb-3">Consigner — please initial each statement:</p>
+
           <div className="space-y-3 mb-6">
             <div className="flex items-center gap-4">
-              <p className="flex-1 text-sm">I have reviewed and agree to the items listed above.</p>
+              <p className="flex-1 text-sm">I agree to special Holiday terms and the shorter consignment period.</p>
               <input
                 type="text"
                 className="st-input w-20 text-center"
@@ -449,9 +583,9 @@ export default function FormPreview() {
                 placeholder="XX"
               />
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <p className="flex-1 text-sm">I understand and accept the consignment terms and conditions.</p>
+              <p className="flex-1 text-sm">I have no specific requirements other than those noted below.</p>
               <input
                 type="text"
                 className="st-input w-20 text-center"
@@ -461,9 +595,9 @@ export default function FormPreview() {
                 placeholder="XX"
               />
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <p className="flex-1 text-sm">I confirm all item information is accurate to the best of my knowledge.</p>
+              <p className="flex-1 text-sm">I agree to participate in all sales &amp; promotions of CBD and markdowns will be equally shared as per contract.</p>
               <input
                 type="text"
                 className="st-input w-20 text-center"
@@ -474,6 +608,60 @@ export default function FormPreview() {
               />
             </div>
           </div>
+
+          {/* Contract section — new consigners only */}
+          {isNewConsigner && (
+            <div className="mb-6 p-4 border border-surface-border rounded-lg">
+              <h4 className="font-semibold mb-3">Consignment Contract</h4>
+              <ul className="text-sm space-y-1 mb-4 list-disc list-inside" style={{ color: 'var(--text-secondary)' }}>
+                <li>Furniture &amp; other large items must be preapproved by email.</li>
+                <li>One-Time $25 Account Registration Fee.</li>
+                <li>Pricing request(s) must occur during intake.</li>
+                <li>120-day Consignment Period with markdowns.</li>
+                <li>Shorter Consignment Period for holiday items.</li>
+                <li>Items become CBD property at expiration.</li>
+                <li>Cross-Posting / Selling is not permitted.</li>
+                <li>We will not contact you for account activity/reminders.</li>
+                <li>Twenty-five percent (25%) of original price is charged for reclaim during 120 days of consignment.</li>
+                <li>Checks must be picked up &amp; cashed within 180 days of issue/expiration. Expired checks will not be reissued.</li>
+              </ul>
+
+              <div className="flex items-center gap-4 mb-4">
+                <p className="flex-1 text-sm">I acknowledge receipt and agreement to all contract terms above.</p>
+                <input
+                  type="text"
+                  className="st-input w-20 text-center"
+                  value={contractInitials}
+                  onChange={(e) => setContractInitials(e.target.value)}
+                  maxLength={5}
+                  placeholder="XX"
+                />
+              </div>
+
+              <div className="st-divider" />
+
+              <p className="font-medium text-sm mb-3">PAYMENT — select your preference:</p>
+              <div className="space-y-2">
+                {[
+                  { value: 'cash', label: 'I would like to maintain cash on account.' },
+                  { value: 'pickup', label: 'I will pick up my check(s) at the store.' },
+                  { value: 'mail', label: 'I would like my check(s) mailed (out of state).' },
+                ].map((option) => (
+                  <label key={option.value} className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentPreference"
+                      value={option.value}
+                      checked={paymentPreference === option.value}
+                      onChange={() => setPaymentPreference(option.value)}
+                      className="w-4 h-4 accent-primary"
+                    />
+                    <span className="text-sm">{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Date */}
           <div className="mb-6">
@@ -489,32 +677,45 @@ export default function FormPreview() {
           {/* Signature pad */}
           <div className="mb-6">
             <label className="st-label">Consigner Signature</label>
-            <p className="st-caption mb-2">Use your finger or mouse to sign in the box below</p>
-            
-            <div className="bg-white rounded-lg border-2 border-surface-border p-2">
-              <SignatureCanvas
-                ref={signatureRef}
-                canvasProps={{
-                  className: 'signature-canvas w-full h-40 bg-white rounded',
-                }}
-                penColor="black"
-              />
-            </div>
-            
-            <div className="flex gap-3 mt-3">
-              <button onClick={handleClearSignature} className="st-button">
-                Clear Signature
-              </button>
-              <button onClick={handleConfirmSignature} className="st-button-primary">
-                Confirm Signature
-              </button>
-            </div>
-            
-            {signatureData && (
-              <div className="st-success mt-3">
-                <CheckCircle size={18} className="inline mr-2" />
-                Signature captured!
-              </div>
+
+            {!signatureData ? (
+              <>
+                <p className="st-caption mb-2">Use your finger or mouse to sign in the box below</p>
+                <div className="bg-white rounded-lg border-2 border-surface-border p-2" style={{ touchAction: 'none' }}>
+                  <SignatureCanvas
+                    ref={signatureRef}
+                    canvasProps={{
+                      className: 'signature-canvas w-full h-40 bg-white rounded',
+                      style: { touchAction: 'none' },
+                    }}
+                    penColor="black"
+                    clearOnResize={false}
+                  />
+                </div>
+                <div className="flex gap-3 mt-3">
+                  <button onClick={handleClearSignature} className="st-button">
+                    Clear
+                  </button>
+                  <button onClick={handleConfirmSignature} className="st-button-primary">
+                    Confirm Signature
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="st-success mb-3">
+                  <CheckCircle size={18} className="inline mr-2" />
+                  Signature captured!
+                </div>
+                <img
+                  src={signatureData}
+                  alt="Signature"
+                  className="h-20 border border-surface-border rounded-lg p-2 bg-white"
+                />
+                <button onClick={handleClearSignature} className="st-button mt-3">
+                  Re-sign
+                </button>
+              </>
             )}
           </div>
 
@@ -528,27 +729,36 @@ export default function FormPreview() {
           {/* Complete button */}
           <button
             onClick={handleCompleteIntake}
-            disabled={!canComplete()}
+            disabled={!canComplete() || isCompleting}
             className="w-full st-button-primary"
           >
-            Complete Intake Agreement
+            {isCompleting ? 'Saving...' : 'Complete Intake Agreement'}
           </button>
         </div>
       )}
 
-      {/* View-only signature display - show when viewing (not editing) a signed form */}
-      {!documentOnlyPreview && isViewOnly && signatureData && (
+      {/* View-only signature display - show when viewing or editing a signed form */}
+      {!documentOnlyPreview && (isViewOnly || formSigned) && signatureData && (
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-4">Signature on File</h3>
 
           <div className="space-y-3">
             <p><strong>Staff Acceptance:</strong> {acceptedBy}</p>
 
-            <div className="flex gap-8">
-              <p><strong>Statement 1:</strong> {initials.init1}</p>
-              <p><strong>Statement 2:</strong> {initials.init2}</p>
-              <p><strong>Statement 3:</strong> {initials.init3}</p>
+            <div className="flex flex-wrap gap-4">
+              <p><strong>Initial 1:</strong> {initials.init1}</p>
+              <p><strong>Initial 2:</strong> {initials.init2}</p>
+              <p><strong>Initial 3:</strong> {initials.init3}</p>
             </div>
+
+            {isNewConsigner && contractInitials && (
+              <div className="flex flex-wrap gap-4">
+                <p><strong>Contract Initials:</strong> {contractInitials}</p>
+                {paymentPreference && (
+                  <p><strong>Payment:</strong> {paymentPreference === 'cash' ? 'Cash on account' : paymentPreference === 'pickup' ? 'Pick up check' : 'Mail check'}</p>
+                )}
+              </div>
+            )}
 
             <p><strong>Date:</strong> {signatureDate}</p>
 
@@ -596,7 +806,7 @@ export default function FormPreview() {
               <span className="flex items-center gap-2 font-medium">
                 <Mail size={18} />
                 Email Receipt to Customer
-                {isEmailConfigured() && (
+                {emailConfigured && (
                   <span className="text-xs px-2 py-0.5 rounded bg-success/20 text-success">
                     Direct Send
                   </span>
@@ -610,7 +820,7 @@ export default function FormPreview() {
                 {emailSent ? (
                   <div className="st-success">
                     <CheckCircle size={18} className="inline mr-2" />
-                    {isEmailConfigured()
+                    {emailConfigured
                       ? `Email sent successfully to ${emailAddress}!`
                       : `Email client opened for ${emailAddress}`
                     }
@@ -670,9 +880,8 @@ Indianapolis, Indiana 46250
 
 Thank you for choosing Consigned By Design!`;
 
-                          // Check if Resend is configured
-                          if (isEmailConfigured()) {
-                            // Send directly via Resend with PDF attachment
+                          if (emailConfigured) {
+                            // Send directly via Gmail SMTP with PDF attachment
                             setEmailSending(true);
                             setEmailError('');
 
@@ -723,7 +932,7 @@ Thank you for choosing Consigned By Design!`;
                         ) : (
                           <>
                             <Send size={18} className="inline mr-2" />
-                            {isEmailConfigured() ? 'Send Email' : 'Open Email'}
+                            {emailConfigured ? 'Send Email' : 'Open Email'}
                           </>
                         )}
                       </button>
@@ -734,7 +943,7 @@ Thank you for choosing Consigned By Design!`;
                     )}
 
                     <p className="st-caption mt-2">
-                      {isEmailConfigured()
+                      {emailConfigured
                         ? 'Email will be sent with the intake form attached as a PDF.'
                         : 'Opens your email client with a pre-filled receipt.'}
                     </p>

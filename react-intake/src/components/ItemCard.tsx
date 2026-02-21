@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Camera, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Camera, X, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { IntakeItem, AVAILABLE_FIELDS, FieldId } from '../types';
 
@@ -9,9 +9,10 @@ interface ItemCardProps {
 }
 
 export default function ItemCard({ item, index }: ItemCardProps) {
-  const { 
-    updateItem, 
-    enabledFields, 
+  const {
+    updateItem,
+    removeItem,
+    enabledFields,
     isViewOnly,
     setAddingPhotoForItem,
     removePhotoFromItem,
@@ -187,14 +188,38 @@ export default function ItemCard({ item, index }: ItemCardProps) {
   return (
     <div className="st-card">
       {/* Header */}
-      <div 
-        className="flex items-center justify-between cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <h4 className="font-semibold">Item {index + 1}</h4>
-        <button className="p-1 hover:bg-surface rounded">
-          {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-        </button>
+      <div className="flex items-center justify-between">
+        <div
+          className="flex items-center gap-2 flex-1 cursor-pointer"
+          onClick={() => setExpanded(!expanded)}
+        >
+          <h4 className="font-semibold">Item {index + 1}</h4>
+          {item.name ? (
+            <span className="text-sm truncate max-w-xs" style={{ color: 'var(--text-secondary)' }}>
+              — {item.name}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-1">
+          {!isViewOnly && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                removeItem(index);
+              }}
+              className="p-1.5 rounded hover:bg-error/10 text-error/60 hover:text-error transition-colors"
+              title="Delete item"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+          <button
+            className="p-1 hover:bg-surface rounded"
+            onClick={() => setExpanded(!expanded)}
+          >
+            {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </button>
+        </div>
       </div>
 
       {expanded && (

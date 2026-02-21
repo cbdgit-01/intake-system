@@ -322,7 +322,6 @@ function FormCard({ form, onView, onEdit, onDelete }: FormCardProps) {
   const modeLabels: Record<string, string> = {
     detection: 'Item Detection',
     general: 'Manual Entry',
-    email: 'Email Import',
     prepopulate: 'Pre-populate',
   };
   const modeLabel = modeLabels[form.intakeMode || ''] || form.intakeMode || 'Unknown';
