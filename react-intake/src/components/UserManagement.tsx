@@ -3,7 +3,7 @@ import { UserPlus, Trash2, Edit, X, Check, Shield, User as UserIcon, Database, F
 import { useAuth, User } from '../store/useAuth';
 import { useStore } from '../store/useStore';
 import { useNavigate } from 'react-router-dom';
-import { getAllForms, deleteForm, factoryResetDatabase } from '../db';
+import { getAllForms, deleteForm, factoryResetDatabase, deleteConsignerAllForms } from '../db';
 import { IntakeForm } from '../types';
 
 export default function UserManagement() {
@@ -45,6 +45,17 @@ export default function UserManagement() {
       await loadForms();
       triggerFormsRefresh();
       setSuccessMessage('All records have been cleared.');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    }
+  };
+
+  const handleDeleteConsignerAllForms = async (key: string, name: string) => {
+    if (confirm(`Delete ALL records for "${name}"? This cannot be undone.`)) {
+      await deleteConsignerAllForms(key);
+      await loadForms();
+      triggerFormsRefresh();
+      setExpandedConsigner(null);
+      setSuccessMessage(`All records for "${name}" deleted.`);
       setTimeout(() => setSuccessMessage(''), 3000);
     }
   };
@@ -383,6 +394,18 @@ export default function UserManagement() {
                         {/* Expanded Forms List */}
                         {isExpanded && (
                           <div className="mt-4 pt-4 space-y-2" style={{ borderTop: '1px solid var(--surface-border)' }}>
+                            <div className="flex justify-end mb-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteConsignerAllForms(consigner.key, consigner.name || consigner.key);
+                                }}
+                                className="st-button text-sm text-error"
+                              >
+                                <Trash2 size={15} className="inline mr-1" />
+                                Delete Account ({totalForms} record{totalForms !== 1 ? 's' : ''})
+                              </button>
+                            </div>
                             {consigner.forms.map((form, idx) => {
                               const formNumber = idx + 1;
                               const dateStr = form.updatedAt 

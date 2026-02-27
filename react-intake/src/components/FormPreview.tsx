@@ -429,7 +429,7 @@ export default function FormPreview() {
                 {enabledFields.price && <th className="p-2 text-right border">Price</th>}
                 {enabledFields.quantity && <th className="p-2 text-center border">QTY</th>}
                 {enabledFields.condition && <th className="p-2 text-center border">Cond.</th>}
-                {enabledFields.dimensions && <th className="p-2 text-left border">Dims</th>}
+                {enabledFields.dimensions && <th className="p-2 text-left border">Dims (W×D×H×SH)</th>}
               </tr>
             </thead>
             <tbody>
@@ -442,7 +442,7 @@ export default function FormPreview() {
                   {enabledFields.price && <td className="p-2 border text-right">${item.price.toFixed(2)}</td>}
                   {enabledFields.quantity && <td className="p-2 border text-center">{item.quantity}</td>}
                   {enabledFields.condition && <td className="p-2 border text-center">{item.condition.substring(0, 4)}</td>}
-                  {enabledFields.dimensions && <td className="p-2 border">{item.dimensions.substring(0, 12) || '-'}</td>}
+                  {enabledFields.dimensions && <td className="p-2 border">{item.dimensions || '-'}</td>}
                 </tr>
               ))}
             </tbody>
@@ -568,45 +568,26 @@ export default function FormPreview() {
 
           <div className="st-divider" />
 
-          {/* Consigner initials */}
-          <p className="font-medium mb-3">Consigner — please initial each statement:</p>
-
-          <div className="space-y-3 mb-6">
-            <div className="flex items-center gap-4">
-              <p className="flex-1 text-sm">I agree to special Holiday terms and the shorter consignment period.</p>
-              <input
-                type="text"
-                className="st-input w-20 text-center"
-                value={initials.init1}
-                onChange={(e) => setInitials({ init1: e.target.value })}
-                maxLength={5}
-                placeholder="XX"
-              />
-            </div>
-
-            <div className="flex items-center gap-4">
-              <p className="flex-1 text-sm">I have no specific requirements other than those noted below.</p>
-              <input
-                type="text"
-                className="st-input w-20 text-center"
-                value={initials.init2}
-                onChange={(e) => setInitials({ init2: e.target.value })}
-                maxLength={5}
-                placeholder="XX"
-              />
-            </div>
-
-            <div className="flex items-center gap-4">
-              <p className="flex-1 text-sm">I agree to participate in all sales &amp; promotions of CBD and markdowns will be equally shared as per contract.</p>
-              <input
-                type="text"
-                className="st-input w-20 text-center"
-                value={initials.init3}
-                onChange={(e) => setInitials({ init3: e.target.value })}
-                maxLength={5}
-                placeholder="XX"
-              />
-            </div>
+          {/* Consigner initials — single field applies to all three statements */}
+          <p className="font-medium mb-2">Consigner — initial to acknowledge all of the following:</p>
+          <ul className="text-sm mb-3 list-disc list-inside space-y-1" style={{ color: 'var(--text-secondary)' }}>
+            <li>I agree to special Holiday terms and the shorter consignment period.</li>
+            <li>I have no specific requirements other than those noted below.</li>
+            <li>I agree to participate in all sales &amp; promotions of CBD and markdowns will be equally shared as per contract.</li>
+          </ul>
+          <div className="flex items-center gap-4 mb-6">
+            <label className="st-label mb-0 shrink-0">Initials</label>
+            <input
+              type="text"
+              className="st-input w-24 text-center"
+              value={initials.init1}
+              onChange={(e) => {
+                const val = e.target.value.toLowerCase();
+                setInitials({ init1: val, init2: val, init3: val });
+              }}
+              maxLength={5}
+              placeholder="initials"
+            />
           </div>
 
           {/* Contract section — new consigners only */}
@@ -632,9 +613,9 @@ export default function FormPreview() {
                   type="text"
                   className="st-input w-20 text-center"
                   value={contractInitials}
-                  onChange={(e) => setContractInitials(e.target.value)}
+                  onChange={(e) => setContractInitials(e.target.value.toLowerCase())}
                   maxLength={5}
-                  placeholder="XX"
+                  placeholder="initials"
                 />
               </div>
 

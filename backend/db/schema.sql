@@ -53,6 +53,13 @@ CREATE TABLE IF NOT EXISTS deleted_forms (
     deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Add new columns if they don't exist (safe to run on existing databases)
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS contract_initials VARCHAR(10);
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS payment_preference VARCHAR(20);
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS consigner_city VARCHAR(100);
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS consigner_state VARCHAR(50);
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS consigner_zip VARCHAR(20);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_forms_updated_at ON forms(updated_at);
 CREATE INDEX IF NOT EXISTS idx_forms_consigner_number ON forms(consigner_number);

@@ -88,14 +88,8 @@ function validateForm(form: IntakeForm): { valid: boolean; error?: string } {
   if (!form.id) return { valid: false, error: 'Missing form ID' };
   if (!form.consignerType) return { valid: false, error: 'Missing consigner type' };
 
-  if (form.consignerType === 'new') {
-    if (!form.consignerName?.trim()) {
-      return { valid: false, error: 'New consigner requires name' };
-    }
-  } else if (form.consignerType === 'existing') {
-    if (!form.consignerNumber) {
-      return { valid: false, error: 'Existing consigner requires number' };
-    }
+  if (!form.consignerName?.trim()) {
+    return { valid: false, error: 'Form requires consigner name' };
   }
 
   return { valid: true };
@@ -111,6 +105,9 @@ function formToPayload(form: IntakeForm): Record<string, unknown> {
     consignerName: form.consignerName || '',
     consignerNumber: form.consignerNumber || null,
     consignerAddress: form.consignerAddress || null,
+    consignerCity: form.consignerCity || null,
+    consignerState: form.consignerState || null,
+    consignerZip: form.consignerZip || null,
     consignerPhone: form.consignerPhone || null,
     consignerEmail: form.consignerEmail || null,
     intakeMode: form.intakeMode || null,
@@ -121,6 +118,8 @@ function formToPayload(form: IntakeForm): Record<string, unknown> {
     initials1: form.initials1 || null,
     initials2: form.initials2 || null,
     initials3: form.initials3 || null,
+    contractInitials: form.contractInitials || null,
+    paymentPreference: form.paymentPreference || null,
     signatureDate: form.signatureDate || null,
     acceptedBy: form.acceptedBy || null,
     createdAt: form.createdAt instanceof Date ? form.createdAt.toISOString() : form.createdAt,
@@ -235,6 +234,9 @@ function mapRemoteToLocal(data: Record<string, unknown>): IntakeForm & { id: str
     consignerName: (data.consignerName as string) || '',
     consignerNumber: (data.consignerNumber as string) || undefined,
     consignerAddress: (data.consignerAddress as string) || undefined,
+    consignerCity: (data.consignerCity as string) || undefined,
+    consignerState: (data.consignerState as string) || undefined,
+    consignerZip: (data.consignerZip as string) || undefined,
     consignerPhone: (data.consignerPhone as string) || undefined,
     consignerEmail: (data.consignerEmail as string) || undefined,
     intakeMode: (data.intakeMode as 'detection' | 'general' | 'prepopulate' | null) || null,
@@ -245,6 +247,8 @@ function mapRemoteToLocal(data: Record<string, unknown>): IntakeForm & { id: str
     initials1: (data.initials1 as string) || undefined,
     initials2: (data.initials2 as string) || undefined,
     initials3: (data.initials3 as string) || undefined,
+    contractInitials: (data.contractInitials as string) || undefined,
+    paymentPreference: (data.paymentPreference as string) || undefined,
     signatureDate: (data.signatureDate as string) || undefined,
     acceptedBy: (data.acceptedBy as string) || undefined,
     createdAt: data.createdAt ? new Date(data.createdAt as string) : new Date(),

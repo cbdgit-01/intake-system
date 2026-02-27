@@ -35,17 +35,28 @@ export default function ItemCard({ item, index }: ItemCardProps) {
         // Special handling for dimensions - show 4 boxes (W, D, H, SH)
         if (fieldId === 'dimensions') {
           const dimValue = (value as string) || '';
-          // Parse dimensions - format: W x D x H (SH) or similar
-          const shMatch = dimValue.match(/\(SH:?\s*([^)]*)\)/i);
-          const seatHeight = shMatch ? shMatch[1].replace(/"/g, '').trim() : '';
-          const mainPart = dimValue.replace(/\s*\(SH:?[^)]*\)/i, '');
-          const parts = mainPart.split(/\s*x\s*/i).map(p => p.replace(/"/g, '').trim());
-          const [width = '', depth = '', height = ''] = parts;
+          // Parse dimensions — handle old "W" x D" x H" | SH: X"" and new "W×D×H×SH" formats
+          let width = '', depth = '', height = '', seatHeight = '';
+          if (dimValue.match(/SH:/i)) {
+            // Old format with explicit SH label
+            const shMatch = dimValue.match(/SH:?\s*([\d.]+)/i);
+            seatHeight = shMatch ? shMatch[1] : '';
+            const mainPart = dimValue.replace(/\s*[\|(]\s*SH:?\s*[\d.]*"?\s*\)?/i, '').trim();
+            const parts = mainPart.split(/\s*[×x]\s*/i).map(p => p.replace(/"/g, '').trim());
+            [width = '', depth = '', height = ''] = parts;
+          } else {
+            // New × format: W×D×H×SH (or plain W×D×H)
+            const parts = dimValue.split(/\s*[×x]\s*/i).map(p => p.replace(/"/g, '').trim());
+            [width = '', depth = '', height = '', seatHeight = ''] = parts;
+          }
 
           const updateDimensions = (w: string, d: string, h: string, sh: string) => {
-            const mainDims = [w, d, h].filter(Boolean).join('" x ');
-            const shPart = sh ? ` (SH: ${sh}")` : '';
-            const formatted = mainDims ? mainDims + '"' + shPart : (sh ? `(SH: ${sh}")` : '');
+            const vals = [w.trim(), d.trim(), h.trim(), sh.trim()];
+            let lastNonEmpty = -1;
+            for (let i = 0; i < vals.length; i++) {
+              if (vals[i]) lastNonEmpty = i;
+            }
+            const formatted = lastNonEmpty === -1 ? '' : vals.slice(0, lastNonEmpty + 1).join('×');
             handleFieldChange('dimensions', formatted);
           };
 
@@ -88,7 +99,7 @@ export default function ItemCard({ item, index }: ItemCardProps) {
                     placeholder="H"
                   />
                 </div>
-                <span className="text-text-muted mt-5">|</span>
+                <span className="text-text-muted mt-5">×</span>
                 <div className="flex-1 text-center">
                   <span className="text-xs text-text-muted block mb-1">SH</span>
                   <input

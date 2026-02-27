@@ -112,10 +112,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Help text */}
-          <p className="text-center text-sm text-text-muted mt-6">
-            Contact an administrator if you need an account
-          </p>
         </div>
       </div>
     </div>

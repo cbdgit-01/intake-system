@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, ArrowLeft, FileText, Edit, Trash2, Eye, Plus, User } from 'lucide-react';
+import { Search, ArrowLeft, FileText, Edit, Trash2, Eye, Plus, User, Save, X } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { getAllForms, deleteForm } from '../db';
+import { getAllForms, deleteForm, updateConsignerAcrossForms } from '../db';
 import { syncFromCloud } from '../db/syncService';
 import { IntakeForm } from '../types';
 
@@ -17,8 +17,21 @@ export default function Dashboard() {
     triggerFormsRefresh,
   } = useStore();
 
+
+
   const [searchTerm, setSearchTerm] = useState('');
   const [allForms, setAllForms] = useState<IntakeForm[]>([]);
+
+  // Edit consigner state
+  const [editingConsigner, setEditingConsigner] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editNumber, setEditNumber] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editCity, setEditCity] = useState('');
+  const [editState, setEditState] = useState('');
+  const [editZip, setEditZip] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
 
   // Load data on mount and when forms change
   useEffect(() => {
@@ -26,37 +39,32 @@ export default function Dashboard() {
   }, [formsVersion]);
 
   const loadAllData = async () => {
-    // Load from local database FIRST for instant display
     const forms = await getAllForms();
     setAllForms(forms);
 
-    // Then sync from cloud in background (will trigger formsVersion update when done)
     if (navigator.onLine) {
       syncFromCloud().catch(console.error);
     }
   };
 
   // Search forms directly by consigner name or number
-  const searchResults = searchTerm.length >= 2 
-    ? allForms.filter(f => 
+  const searchResults = searchTerm.length >= 2
+    ? allForms.filter(f =>
         f.consignerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         f.consignerNumber?.toLowerCase().includes(searchTerm.toLowerCase())
       )
     : [];
 
-  // Group search results by consigner (using name as key if no number)
   const groupedSearchResults = getUniqueConsignersFromForms(searchResults);
 
-  // Get forms for selected consigner - match by number OR by name if no number
-  const consignerForms = selectedConsignerNumber 
-    ? allForms.filter(f => 
-        f.consignerNumber === selectedConsignerNumber || 
+  const consignerForms = selectedConsignerNumber
+    ? allForms.filter(f =>
+        f.consignerNumber === selectedConsignerNumber ||
         (!f.consignerNumber && f.consignerName === selectedConsignerNumber)
       )
     : [];
 
-  // Get consigner info from forms
-  const consignerInfo = selectedConsignerNumber 
+  const consignerInfo = selectedConsignerNumber
     ? allForms.find(f => f.consignerNumber === selectedConsignerNumber) ||
       allForms.find(f => f.consignerName === selectedConsignerNumber)
     : null;
@@ -78,11 +86,10 @@ export default function Dashboard() {
       await deleteForm(formId);
       await loadAllData();
       triggerFormsRefresh();
-      
-      // If we deleted the last form for this consigner, go back to search
-      const remainingForms = allForms.filter(f => 
+
+      const remainingForms = allForms.filter(f =>
         f.id !== formId && (
-          f.consignerNumber === selectedConsignerNumber || 
+          f.consignerNumber === selectedConsignerNumber ||
           (!f.consignerNumber && f.consignerName === selectedConsignerNumber)
         )
       );
@@ -94,16 +101,51 @@ export default function Dashboard() {
 
   const handleSelectConsigner = (consignerNum: string) => {
     setSelectedConsignerNumber(consignerNum);
+    setEditingConsigner(false);
   };
 
   const handleBackToSearch = () => {
     setSelectedConsignerNumber(null);
+    setEditingConsigner(false);
   };
 
   const handleNewIntake = () => {
     resetAll();
     setView('intake');
   };
+
+  const handleStartEditConsigner = () => {
+    setEditName(consignerInfo?.consignerName || '');
+    setEditNumber(consignerInfo?.consignerNumber || '');
+    setEditAddress(consignerInfo?.consignerAddress || '');
+    setEditCity(consignerInfo?.consignerCity || '');
+    setEditState(consignerInfo?.consignerState || '');
+    setEditZip(consignerInfo?.consignerZip || '');
+    setEditPhone(consignerInfo?.consignerPhone || '');
+    setEditingConsigner(true);
+  };
+
+  const handleSaveConsignerEdit = async () => {
+    if (!selectedConsignerNumber || editSaving) return;
+    setEditSaving(true);
+    await updateConsignerAcrossForms(selectedConsignerNumber, {
+      consignerName: editName,
+      consignerNumber: editNumber,
+      consignerAddress: editAddress,
+      consignerCity: editCity,
+      consignerState: editState,
+      consignerZip: editZip,
+      consignerPhone: editPhone,
+    });
+    // If the number changed, update the selected key so we stay on this consigner
+    const newKey = editNumber || editName;
+    await loadAllData();
+    triggerFormsRefresh();
+    setSelectedConsignerNumber(newKey);
+    setEditingConsigner(false);
+    setEditSaving(false);
+  };
+
 
   // Viewing specific consigner's records
   if (selectedConsignerNumber) {
@@ -122,25 +164,82 @@ export default function Dashboard() {
 
         {/* Consigner Details */}
         <div className="st-card mb-6">
-          <div className="flex items-start gap-4">
-            <div className="p-3 rounded-lg bg-primary/10">
-              <User size={24} className="text-primary" />
+          {editingConsigner ? (
+            <div className="space-y-3">
+              <h3 className="font-semibold mb-3">Edit Consigner Info</h3>
+              <div>
+                <label className="st-label">Name</label>
+                <input type="text" className="st-input" value={editName} onChange={(e) => setEditName(e.target.value)} />
+              </div>
+              <div>
+                <label className="st-label">Consigner # (optional)</label>
+                <input type="text" className="st-input" value={editNumber} onChange={(e) => setEditNumber(e.target.value)} />
+              </div>
+              <div>
+                <label className="st-label">Street Address</label>
+                <input type="text" className="st-input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="st-label">City</label>
+                  <input type="text" className="st-input" value={editCity} onChange={(e) => setEditCity(e.target.value)} />
+                </div>
+                <div>
+                  <label className="st-label">State</label>
+                  <input type="text" className="st-input" value={editState} maxLength={2} onChange={(e) => setEditState(e.target.value.toUpperCase())} />
+                </div>
+                <div>
+                  <label className="st-label">Zip</label>
+                  <input type="text" className="st-input" value={editZip} maxLength={10} onChange={(e) => setEditZip(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <label className="st-label">Phone</label>
+                <input type="tel" className="st-input" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={handleSaveConsignerEdit} disabled={editSaving} className="st-button-primary">
+                  <Save size={16} className="inline mr-1" />
+                  {editSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button onClick={() => setEditingConsigner(false)} className="st-button">
+                  <X size={16} className="inline mr-1" />
+                  Cancel
+                </button>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-semibold">
-                {consignerInfo?.consignerName || selectedConsignerNumber}
-              </h2>
-              {consignerInfo?.consignerNumber && (
-                <p style={{ color: 'var(--text-secondary)' }}>#{consignerInfo.consignerNumber}</p>
-              )}
-              {consignerInfo?.consignerAddress && (
-                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>{consignerInfo.consignerAddress}</p>
-              )}
-              {consignerInfo?.consignerPhone && (
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{consignerInfo.consignerPhone}</p>
-              )}
+          ) : (
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-lg bg-primary/10 shrink-0">
+                <User size={24} className="text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-xl font-semibold">
+                  {consignerInfo?.consignerName || selectedConsignerNumber}
+                </h2>
+                {consignerInfo?.consignerNumber && (
+                  <p style={{ color: 'var(--text-secondary)' }}>#{consignerInfo.consignerNumber}</p>
+                )}
+                {consignerInfo?.consignerAddress && (
+                  <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                    {consignerInfo.consignerAddress}
+                    {(consignerInfo.consignerCity || consignerInfo.consignerState) && (
+                      <>, {consignerInfo.consignerCity}{consignerInfo.consignerCity && consignerInfo.consignerState ? ', ' : ''}{consignerInfo.consignerState}{consignerInfo.consignerZip ? ' ' + consignerInfo.consignerZip : ''}</>
+                    )}
+                  </p>
+                )}
+                {consignerInfo?.consignerPhone && (
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{consignerInfo.consignerPhone}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2 shrink-0">
+                <button onClick={handleStartEditConsigner} className="st-button text-sm">
+                  <Edit size={15} className="inline mr-1" />
+                  Edit Info
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="st-divider" />
@@ -258,37 +357,26 @@ export default function Dashboard() {
 }
 
 // Helper to get unique consigners from forms
-// Uses consignerNumber as key if available, otherwise uses consignerName
-function getUniqueConsignersFromForms(forms: IntakeForm[]): Array<{ 
-  key: string; 
-  name: string; 
-  number: string; 
+function getUniqueConsignersFromForms(forms: IntakeForm[]): Array<{
+  key: string;
+  name: string;
+  number: string;
   address: string;
   phone: string;
-  recordCount: number 
+  recordCount: number
 }> {
   const consignersMap = new Map<string, { name: string; number: string; address: string; phone: string; count: number }>();
-  
+
   forms.forEach((form) => {
-    // Use consignerNumber as key if available, otherwise use name
     const key = form.consignerNumber || form.consignerName || form.id;
-    
+
     const existing = consignersMap.get(key);
     if (existing) {
       existing.count++;
-      // Update fields if we have better ones
-      if (form.consignerName && !existing.name) {
-        existing.name = form.consignerName;
-      }
-      if (form.consignerNumber && !existing.number) {
-        existing.number = form.consignerNumber;
-      }
-      if (form.consignerAddress && !existing.address) {
-        existing.address = form.consignerAddress;
-      }
-      if (form.consignerPhone && !existing.phone) {
-        existing.phone = form.consignerPhone;
-      }
+      if (form.consignerName && !existing.name) existing.name = form.consignerName;
+      if (form.consignerNumber && !existing.number) existing.number = form.consignerNumber;
+      if (form.consignerAddress && !existing.address) existing.address = form.consignerAddress;
+      if (form.consignerPhone && !existing.phone) existing.phone = form.consignerPhone;
     } else {
       consignersMap.set(key, {
         name: form.consignerName || '',
@@ -299,7 +387,7 @@ function getUniqueConsignersFromForms(forms: IntakeForm[]): Array<{
       });
     }
   });
-  
+
   return Array.from(consignersMap.entries()).map(([key, data]) => ({
     key,
     name: data.name,

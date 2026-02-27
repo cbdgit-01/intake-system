@@ -5,7 +5,7 @@
  * then synced to the backend when online.
  */
 
-import { IntakeForm, Consigner, IntakeItem } from '../types';
+import { IntakeForm, Consigner } from '../types';
 import {
   saveFormLocally,
   getFormLocally,
@@ -278,30 +278,41 @@ export async function searchConsignersFromForms(query: string): Promise<Array<{
   return Array.from(seen.values()).slice(0, 10);
 }
 
+export async function updateConsignerAcrossForms(
+  key: string,
+  updates: Partial<Pick<IntakeForm, 'consignerName' | 'consignerNumber' | 'consignerAddress' | 'consignerCity' | 'consignerState' | 'consignerZip' | 'consignerPhone'>>
+): Promise<number> {
+  const allForms = await getAllFormsLocally();
+  const formsToUpdate = allForms.filter(f =>
+    f.consignerNumber === key || (!f.consignerNumber && f.consignerName === key)
+  );
+  for (const form of formsToUpdate) {
+    await saveFormLocally({ ...form, ...updates, updatedAt: new Date() });
+  }
+  if (formsToUpdate.length > 0 && navigator.onLine && getToken()) {
+    processSyncQueue().catch(console.error);
+  }
+  return formsToUpdate.length;
+}
+
+export async function deleteConsignerAllForms(key: string): Promise<number> {
+  const allForms = await getAllFormsLocally();
+  const formsToDelete = allForms.filter(f =>
+    f.consignerNumber === key || (!f.consignerNumber && f.consignerName === key)
+  );
+  for (const form of formsToDelete) {
+    await deleteFormLocally(form.localId);
+  }
+  return formsToDelete.length;
+}
+
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
 
 function localFormToIntakeForm(local: LocalForm): IntakeForm {
-  return {
-    id: local.localId,
-    consignerType: local.consignerType,
-    consignerName: local.consignerName,
-    consignerNumber: local.consignerNumber,
-    consignerAddress: local.consignerAddress,
-    consignerPhone: local.consignerPhone,
-    consignerEmail: local.consignerEmail,
-    intakeMode: local.intakeMode,
-    items: local.items as IntakeItem[],
-    enabledFields: local.enabledFields,
-    status: local.status,
-    signatureData: local.signatureData,
-    initials1: local.initials1,
-    initials2: local.initials2,
-    initials3: local.initials3,
-    acceptedBy: local.acceptedBy,
-    createdAt: local.createdAt,
-    updatedAt: local.updatedAt,
-    signedAt: local.signedAt,
-  };
+  // Strip LocalForm-only fields and return everything else as IntakeForm
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { localId, remoteId, synced, syncedAt, localUpdatedAt, ...formFields } = local;
+  return { ...formFields, id: localId };
 }
